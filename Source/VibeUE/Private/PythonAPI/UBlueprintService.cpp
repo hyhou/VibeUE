@@ -9,6 +9,7 @@
 #include "WidgetBlueprint.h"
 #include "Blueprint/WidgetTree.h"       // For WBP widget component class discovery
 #include "EditorAssetLibrary.h"
+#include "UObject/SoftObjectPath.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/KismetEditorUtilities.h"
 #include "Kismet2/CompilerResultsLog.h"
@@ -339,6 +340,10 @@ UBlueprint* UBlueprintService::LoadBlueprint(const FString& BlueprintPath)
 	}
 
 	UObject* LoadedObject = UEditorAssetLibrary::LoadAsset(BlueprintPath);
+	if (!LoadedObject)
+	{
+		LoadedObject = FSoftObjectPath(BlueprintPath).TryLoad();
+	}
 	return Cast<UBlueprint>(LoadedObject);
 }
 
