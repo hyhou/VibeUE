@@ -4921,6 +4921,80 @@ bool UStateTreeService::BindTaskPropertyToGlobalTaskProperty(const FString& Asse
 #endif
 }
 
+bool UStateTreeService::BindTaskPropertyToEvaluator(const FString& AssetPath, const FString& StatePath,
+	const FString& TaskStructName, const FString& TaskPropertyPath, const FString& EvaluatorStructName,
+	const FString& EvaluatorPropertyPath, int32 TaskMatchIndex, int32 EvaluatorMatchIndex)
+{
+	if (TaskPropertyPath.IsEmpty() || EvaluatorStructName.IsEmpty() || EvaluatorPropertyPath.IsEmpty())
+	{
+		UE_LOG(LogStateTreeService, Warning,
+			TEXT("BindTaskPropertyToEvaluator: TaskPropertyPath, EvaluatorStructName, and EvaluatorPropertyPath are required"));
+		return false;
+	}
+
+	UStateTree* StateTree = LoadStateTree(AssetPath);
+	if (!StateTree)
+	{
+		return false;
+	}
+
+#if WITH_EDITORONLY_DATA
+	UStateTreeEditorData* EditorData = GetEditorData(StateTree);
+	if (!EditorData)
+	{
+		return false;
+	}
+
+	UStateTreeState* State = FindStateByPath(EditorData, StatePath);
+	if (!State)
+	{
+		UE_LOG(LogStateTreeService, Warning, TEXT("BindTaskPropertyToEvaluator: State not found: %s"), *StatePath);
+		return false;
+	}
+
+	FStateTreeEditorNode* TaskNode = FindTaskNodeByStruct(State, TaskStructName, TaskMatchIndex);
+	if (!TaskNode)
+	{
+		UE_LOG(LogStateTreeService, Warning,
+			TEXT("BindTaskPropertyToEvaluator: Task not found in %s for struct '%s' at match index %d"),
+			*StatePath, *TaskStructName, TaskMatchIndex);
+		return false;
+	}
+
+	FStateTreeEditorNode* EvalNode =
+		FindEditorNodeByStructInArray(EditorData->Evaluators, EvaluatorStructName, EvaluatorMatchIndex);
+	if (!EvalNode)
+	{
+		UE_LOG(LogStateTreeService, Warning,
+			TEXT("BindTaskPropertyToEvaluator: Evaluator '%s' not found (match index %d)"),
+			*EvaluatorStructName, EvaluatorMatchIndex);
+		return false;
+	}
+
+	FPropertyBindingPath SourcePath;
+	if (!MakeBindingPath(EvalNode->ID, EvaluatorPropertyPath, SourcePath))
+	{
+		UE_LOG(LogStateTreeService, Warning,
+			TEXT("BindTaskPropertyToEvaluator: Invalid evaluator property path: %s"), *EvaluatorPropertyPath);
+		return false;
+	}
+
+	FPropertyBindingPath TargetPath;
+	if (!MakeBindingPath(TaskNode->ID, TaskPropertyPath, TargetPath))
+	{
+		UE_LOG(LogStateTreeService, Warning,
+			TEXT("BindTaskPropertyToEvaluator: Invalid task property path: %s"), *TaskPropertyPath);
+		return false;
+	}
+
+	EditorData->AddPropertyBinding(SourcePath, TargetPath);
+	MarkStateTreeDirty(StateTree);
+	return true;
+#else
+	return false;
+#endif
+}
+
 bool UStateTreeService::UnbindTaskProperty(const FString& AssetPath, const FString& StatePath,
 	const FString& TaskStructName, const FString& TaskPropertyPath, int32 TaskMatchIndex)
 {
@@ -5931,6 +6005,82 @@ bool UStateTreeService::BindTransitionConditionPropertyToContext(const FString& 
 	if (!MakeBindingPath(CondNode->ID, ConditionPropertyPath, TargetPath))
 	{
 		UE_LOG(LogStateTreeService, Warning, TEXT("BindTransitionConditionPropertyToContext: Invalid condition property path: %s"), *ConditionPropertyPath);
+		return false;
+	}
+
+	EditorData->AddPropertyBinding(SourcePath, TargetPath);
+	MarkStateTreeDirty(StateTree);
+	return true;
+#else
+	return false;
+#endif
+}
+
+bool UStateTreeService::BindTransitionConditionPropertyToEvaluator(const FString& AssetPath, const FString& StatePath,
+	int32 TransitionIndex, const FString& ConditionStructName, const FString& ConditionPropertyPath,
+	const FString& EvaluatorStructName, const FString& EvaluatorPropertyPath, int32 ConditionMatchIndex,
+	int32 EvaluatorMatchIndex)
+{
+	if (ConditionPropertyPath.IsEmpty() || EvaluatorStructName.IsEmpty() || EvaluatorPropertyPath.IsEmpty())
+	{
+		UE_LOG(LogStateTreeService, Warning,
+			TEXT("BindTransitionConditionPropertyToEvaluator: ConditionPropertyPath, EvaluatorStructName, and EvaluatorPropertyPath are required"));
+		return false;
+	}
+
+	UStateTree* StateTree = LoadStateTree(AssetPath);
+	if (!StateTree)
+	{
+		return false;
+	}
+
+#if WITH_EDITORONLY_DATA
+	UStateTreeEditorData* EditorData = GetEditorData(StateTree);
+	if (!EditorData)
+	{
+		return false;
+	}
+
+	UStateTreeState* State = FindStateByPath(EditorData, StatePath);
+	if (!State || !State->Transitions.IsValidIndex(TransitionIndex))
+	{
+		UE_LOG(LogStateTreeService, Warning, TEXT("BindTransitionConditionPropertyToEvaluator: Invalid state or transition index"));
+		return false;
+	}
+
+	FStateTreeEditorNode* CondNode = FindEditorNodeByStructInArray(
+		State->Transitions[TransitionIndex].Conditions, ConditionStructName, ConditionMatchIndex);
+	if (!CondNode)
+	{
+		UE_LOG(LogStateTreeService, Warning,
+			TEXT("BindTransitionConditionPropertyToEvaluator: Condition '%s' not found on transition %d of state '%s'"),
+			*ConditionStructName, TransitionIndex, *StatePath);
+		return false;
+	}
+
+	FStateTreeEditorNode* EvalNode =
+		FindEditorNodeByStructInArray(EditorData->Evaluators, EvaluatorStructName, EvaluatorMatchIndex);
+	if (!EvalNode)
+	{
+		UE_LOG(LogStateTreeService, Warning,
+			TEXT("BindTransitionConditionPropertyToEvaluator: Evaluator '%s' not found (match index %d)"),
+			*EvaluatorStructName, EvaluatorMatchIndex);
+		return false;
+	}
+
+	FPropertyBindingPath SourcePath;
+	if (!MakeBindingPath(EvalNode->ID, EvaluatorPropertyPath, SourcePath))
+	{
+		UE_LOG(LogStateTreeService, Warning,
+			TEXT("BindTransitionConditionPropertyToEvaluator: Invalid evaluator property path: %s"), *EvaluatorPropertyPath);
+		return false;
+	}
+
+	FPropertyBindingPath TargetPath;
+	if (!MakeBindingPath(CondNode->ID, ConditionPropertyPath, TargetPath))
+	{
+		UE_LOG(LogStateTreeService, Warning,
+			TEXT("BindTransitionConditionPropertyToEvaluator: Invalid condition property path: %s"), *ConditionPropertyPath);
 		return false;
 	}
 
