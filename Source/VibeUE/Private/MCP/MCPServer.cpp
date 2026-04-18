@@ -132,14 +132,33 @@ bool FMCPServer::Start()
     ListenerSocket->SetReuseAddr(true);
     ListenerSocket->SetNonBlocking(true);
     
-    // Bind and listen
-    if (!ListenerSocket->Bind(*Addr))
-    {
-        UE_LOG(LogMCPServer, Error, TEXT("Failed to bind to port %d - is another process using it?"), Config.Port);
-        SocketSubsystem->DestroySocket(ListenerSocket);
-        ListenerSocket = nullptr;
-        return false;
-    }
+	// Bind with retry — handles TCP TIME_WAIT from a recently-closed previous instance
+	constexpr int32 MaxBindRetries = 5;
+	constexpr float RetryBaseDelaySec = 1.0f;
+	bool bBound = false;
+	for (int32 Attempt = 0; Attempt < MaxBindRetries; ++Attempt)
+	{
+		if (ListenerSocket->Bind(*Addr))
+		{
+			bBound = true;
+			break;
+		}
+		if (Attempt + 1 < MaxBindRetries)
+		{
+			const float Delay = RetryBaseDelaySec * (1 << Attempt); // 1, 2, 4, 8, 16s
+			UE_LOG(LogMCPServer, Warning, TEXT("Failed to bind port %d (attempt %d/%d), retrying in %.0fs..."),
+				Config.Port, Attempt + 1, MaxBindRetries, Delay);
+			FPlatformProcess::Sleep(Delay);
+		}
+	}
+	if (!bBound)
+	{
+		UE_LOG(LogMCPServer, Error, TEXT("Failed to bind to port %d after %d attempts - is another process using it?"),
+			Config.Port, MaxBindRetries);
+		SocketSubsystem->DestroySocket(ListenerSocket);
+		ListenerSocket = nullptr;
+		return false;
+	}
     
     if (!ListenerSocket->Listen(8))
     {
@@ -854,20 +873,6 @@ FString FMCPServer::HandleToolsList(TSharedPtr<FJsonObject> Params, const FStrin
 
 FString FMCPServer::HandleToolsCall(TSharedPtr<FJsonObject> Params, const FString& RequestId)
 {
-    // Check VibeUE API key validity before executing any tool
-    if (!bIsVibeUEApiKeyValid)
-    {
-        TSharedPtr<FJsonObject> Result = MakeShared<FJsonObject>();
-        TArray<TSharedPtr<FJsonValue>> ContentArray;
-        TSharedPtr<FJsonObject> ContentItem = MakeShared<FJsonObject>();
-        ContentItem->SetStringField(TEXT("type"), TEXT("text"));
-        ContentItem->SetStringField(TEXT("text"), TEXT("\u274C A valid VibeUE API key is required to use VibeUE MCP tools. Get your free API key at https://www.vibeue.com/login"));
-        ContentArray.Add(MakeShared<FJsonValueObject>(ContentItem));
-        Result->SetArrayField(TEXT("content"), ContentArray);
-        Result->SetBoolField(TEXT("isError"), true);
-        return BuildJsonRpcResponse(RequestId, Result);
-    }
-
     if (!Params.IsValid())
     {
         return BuildJsonRpcError(RequestId, -32602, TEXT("Invalid params"));
@@ -1209,7 +1214,7 @@ void FMCPServer::ShowProxyNudgeIfNeeded()
         TSharedPtr<TWeakPtr<SNotificationItem>> WeakItemHolder = MakeShared<TWeakPtr<SNotificationItem>>();
 
         FNotificationInfo Info(FText::FromString(
-            TEXT("Your AI client is connected directly to VibeUE (port 8088).\n\n")
+            TEXT("Your AI client is connected directly to VibeUE (port 8188).\n\n")
             TEXT("The VibeUE proxy keeps your tools available even when Unreal Editor ")
             TEXT("is closed — so you can open your AI tool first without losing MCP tools. ")
             TEXT("See the plugin docs to set it up.")));
@@ -1690,7 +1695,7 @@ void FMCPServer::SaveEnabledToConfig(bool bEnabled)
 
 int32 FMCPServer::GetPortFromConfig()
 {
-    int32 Port = 8088; // Default port
+    int32 Port = 8188; // Default port (8088 often blocked by Windows Hyper-V port exclusions)
     GConfig->GetInt(TEXT("VibeUE.MCPServer"), TEXT("Port"), Port, GEditorPerProjectIni);
     return Port;
 }

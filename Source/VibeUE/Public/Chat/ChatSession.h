@@ -393,7 +393,7 @@ public:
     static void SaveMCPServerApiKeyToConfig(const FString& ApiKey);
     
     /** Default MCP Server port */
-    static constexpr int32 DefaultMCPServerPort = 8088;
+    static constexpr int32 DefaultMCPServerPort = 8188;
 
     // Delegates
     FOnMessageAdded OnMessageAdded;

@@ -28,8 +28,8 @@ struct FMCPHostConfig
     /** Whether the MCP server is enabled */
     bool bEnabled = true;
     
-    /** Port to listen on */
-    int32 Port = 8088;
+    /** Port to listen on (avoid 8012-8111 range, often excluded by Hyper-V/WSL2) */
+    int32 Port = 8188;
     
     /** API key for authentication (empty = no auth required) */
     FString ApiKey;
@@ -228,8 +228,9 @@ private:
     /** Current configuration */
     FMCPHostConfig Config;
     
-    /** Whether the VibeUE API key has been validated (checked at startup) */
-    bool bIsVibeUEApiKeyValid = false;
+    /** Whether the VibeUE API key has been validated (checked at startup).
+     *  Default true: local MCP tool execution should not require cloud validation. */
+    bool bIsVibeUEApiKeyValid = true;
     
     /** Whether the server is currently running */
     bool bIsRunning = false;

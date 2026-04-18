@@ -2337,7 +2337,7 @@ FReply SAIChatWindow::OnSettingsClicked()
             [
                 SNew(SHorizontalBox)
                 + SHorizontalBox::Slot().FillWidth(0.4f).VAlign(VAlign_Center)
-                [ SNew(STextBlock).Text(FText::FromString(TEXT("Port:"))).ToolTipText(FText::FromString(TEXT("Port for the MCP HTTP server. Default: 8088"))) ]
+                [ SNew(STextBlock).Text(FText::FromString(TEXT("Port:"))).ToolTipText(FText::FromString(TEXT("Port for the MCP HTTP server. Default: 8188"))) ]
                 + SHorizontalBox::Slot().FillWidth(0.6f)
                 [
                     SAssignNew(MCPServerPortSpinBox, SSpinBox<int32>)

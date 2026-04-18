@@ -111,6 +111,26 @@ static FAutoConsoleCommandWithArgsAndOutputDevice TestToolCommand(
 	FConsoleCommandWithArgsAndOutputDeviceDelegate::CreateStatic(TestVibeUETool)
 );
 
+static void RestartMCPServer()
+{
+	FMCPServer& Server = FMCPServer::Get();
+	Server.StopServer();
+	if (Server.Start())
+	{
+		UE_LOG(LogTemp, Display, TEXT("MCP Server restarted at %s"), *Server.GetServerUrl());
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("MCP Server failed to restart"));
+	}
+}
+
+static FAutoConsoleCommand RestartMCPCommand(
+	TEXT("VibeUE.RestartMCP"),
+	TEXT("Stop and restart the MCP Server (useful when port bind failed on startup)"),
+	FConsoleCommandDelegate::CreateStatic(RestartMCPServer)
+);
+
 void FModule::StartupModule()
 {
 	UE_LOG(LogTemp, Display, TEXT("VibeUE Module has started"));
