@@ -3,6 +3,7 @@
 #include "PythonAPI/UWidgetService.h"
 #include "WidgetBlueprint.h"
 #include "EditorAssetLibrary.h"
+#include "UObject/SoftObjectPath.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetRegistry/IAssetRegistry.h"
 #include "Blueprint/UserWidget.h"
@@ -1104,7 +1105,20 @@ namespace
 
 UWidgetBlueprint* UWidgetService::LoadWidgetBlueprint(const FString& WidgetPath)
 {
+	if (WidgetPath.IsEmpty())
+	{
+		return nullptr;
+	}
+
 	UWidgetBlueprint* WidgetBP = Cast<UWidgetBlueprint>(UEditorAssetLibrary::LoadAsset(WidgetPath));
+	if (!WidgetBP)
+	{
+		// Fallback when UEditorAssetLibrary fails but the asset is already resident (e.g. loaded via StaticFindObject / Python load_asset).
+		if (UObject* Obj = FSoftObjectPath(WidgetPath).TryLoad())
+		{
+			WidgetBP = Cast<UWidgetBlueprint>(Obj);
+		}
+	}
 	if (!WidgetBP)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("UWidgetService: Failed to load Widget Blueprint: %s"), *WidgetPath);
