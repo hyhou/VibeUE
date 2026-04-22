@@ -63,6 +63,7 @@ public class VibeUE : ModuleRules
 				"Slate",
 				"SlateCore",
 				"UMG",
+				"CommonUI",
 				"Kismet",
 				"KismetCompiler",
 				"BlueprintGraph",
