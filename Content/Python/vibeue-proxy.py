@@ -36,8 +36,7 @@ from datetime import datetime, timezone
 # ---------------------------------------------------------------------------
 
 PROXY_PORT = 8089
-UE_PORT    = 8088
-UE_URL     = f"http://127.0.0.1:{UE_PORT}/mcp"
+UE_PORT    = 8188  # matches FMCPServer default (8088 is often blocked by Windows Hyper-V)
 
 APPDATA = os.environ.get("APPDATA", str(pathlib.Path.home()))
 MANIFEST_PATH = pathlib.Path(APPDATA) / "VibeUE" / "tools-manifest.json"
@@ -51,8 +50,11 @@ try:
         _proxy_cfg = json.load(_f)
         _UE_BEARER_TOKEN = _proxy_cfg.get("bearer_token", "")
         PROXY_PORT = int(_proxy_cfg.get("proxy_port", PROXY_PORT))
+        UE_PORT = int(_proxy_cfg.get("ue_port", UE_PORT))
 except Exception:
     _UE_BEARER_TOKEN = ""
+
+UE_URL = f"http://127.0.0.1:{UE_PORT}/mcp"
 
 # ---------------------------------------------------------------------------
 # Helpers

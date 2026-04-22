@@ -53,6 +53,7 @@
 #include "Components/ExpandableArea.h"
 #include "Components/MenuAnchor.h"
 #include "Components/NativeWidgetHost.h"
+#include "Widgets/CommonActivatableWidgetContainer.h"
 #include "Components/PanelSlot.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/KismetEditorUtilities.h"
@@ -1020,6 +1021,7 @@ TSubclassOf<UWidget> UWidgetService::FindWidgetClass(const FString& TypeName)
 		WidgetClassMap.Add(TEXT("ExpandableArea"), UExpandableArea::StaticClass());
 		WidgetClassMap.Add(TEXT("MenuAnchor"), UMenuAnchor::StaticClass());
 		WidgetClassMap.Add(TEXT("NativeWidgetHost"), UNativeWidgetHost::StaticClass());
+		WidgetClassMap.Add(TEXT("CommonActivatableWidgetStack"), UCommonActivatableWidgetStack::StaticClass());
 	}
 	
 	if (TSubclassOf<UWidget>* Found = WidgetClassMap.Find(TypeName))

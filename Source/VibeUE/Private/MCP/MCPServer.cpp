@@ -75,9 +75,26 @@ void FMCPServer::Initialize()
 void FMCPServer::Shutdown()
 {
     StopServer();
-    StopProxy();
+
+    // Proxy lifetime is gated on AutoStart config:
+    //   AutoStart=True  -> keep proxy alive across Editor restarts so the MCP
+    //                      client (Cursor/Claude) does not need to toggle MCP
+    //                      every time the Editor is relaunched. On the next
+    //                      Editor launch StartProxy() will hit IsProxyRunning()
+    //                      true-positive and skip the spawn, reusing the
+    //                      existing proxy. The proxy itself is session-decoupled
+    //                      from UE (see vibeue-proxy.py) and returns friendly
+    //                      "UE is not running" errors for tools/call while UE
+    //                      is down, so the client stays informed.
+    //   AutoStart=False -> user opted out of auto-lifecycle, so we clean up.
+    // See: wiki/raw/internal/tech-lead/VibeUE-MCPProxy-AutoStart-fix-plan.md §4 Step 6
+    if (!GetProxyAutoStartFromConfig())
+    {
+        StopProxy();
+    }
+
     UE_LOG(LogMCPServer, Log, TEXT("MCP Server shutdown"));
-    
+
     // Reset the static instance to ensure proper cleanup on editor exit
     // This prevents the server from keeping the module alive
     Instance.Reset();
@@ -1829,6 +1846,18 @@ bool FMCPServer::IsProxyRunning() const
         }
         // Any other error (ECONNREFUSED etc.) leaves bConnected = false
     }
+
+    // Re-verify via getsockopt(SO_ERROR) — Windows select() marks a closed port as
+    // "writable with error", which Wait(WaitForWrite) reports as success. Only
+    // SCS_Connected means a real TCP session was established. Without this check
+    // IsProxyRunning() returns true on a refused connection and StartProxy()
+    // silently skips spawning the proxy.
+    // See: wiki/raw/internal/tech-lead/VibeUE-MCPProxy-AutoStart-fix-plan.md §3.1
+    if (bConnected && TestSocket->GetConnectionState() != SCS_Connected)
+    {
+        bConnected = false;
+    }
+
     SocketSub->DestroySocket(TestSocket);
 
     bCachedProxyRunning = bConnected;
