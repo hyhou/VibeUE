@@ -6,9 +6,9 @@ Always-running proxy that lets Claude Code (and other MCP clients) see
 VibeUE tool definitions even when Unreal Engine is not running.
 
 How it works:
-  - Listens on PROXY_PORT (default 8089)
-  - tools/list  -> served from %APPDATA%/VibeUE/tools-manifest.json (written by UE on startup)
-  - tools/call  -> forwarded to UE on UE_PORT (default 8088); returns friendly error if UE is down
+  - Listens on PROXY_PORT (default 18089)
+  - tools/list  -> served from tools-manifest.json (written by UE on startup)
+  - tools/call  -> forwarded to UE on UE_PORT (default 8188); returns friendly error if UE is down
   - initialize  -> answered directly (no UE needed)
   - everything else -> forwarded to UE, or empty success if UE is down
 
@@ -16,7 +16,7 @@ Setup:
   1. Run this script once to start the proxy:
        pythonw vibeue-proxy.py      (Windows, no console window)
        python  vibeue-proxy.py      (any platform, with console)
-  2. Point your MCP client at http://127.0.0.1:8089/mcp instead of 8088.
+  2. Point your MCP client at http://127.0.0.1:18089/mcp instead of 8188.
   3. Optionally add start-vibeue-proxy.bat to Windows startup so it runs automatically.
 """
 
@@ -35,7 +35,7 @@ from datetime import datetime, timezone
 # Configuration
 # ---------------------------------------------------------------------------
 
-PROXY_PORT = 8089
+PROXY_PORT = 18089
 UE_PORT    = 8188  # matches FMCPServer default (8088 is often blocked by Windows Hyper-V)
 
 APPDATA = os.environ.get("APPDATA", str(pathlib.Path.home()))
@@ -51,6 +51,8 @@ try:
         _UE_BEARER_TOKEN = _proxy_cfg.get("bearer_token", "")
         PROXY_PORT = int(_proxy_cfg.get("proxy_port", PROXY_PORT))
         UE_PORT = int(_proxy_cfg.get("ue_port", UE_PORT))
+        if _proxy_cfg.get("manifest_path"):
+            MANIFEST_PATH = pathlib.Path(_proxy_cfg["manifest_path"])
 except Exception:
     _UE_BEARER_TOKEN = ""
 
@@ -62,7 +64,10 @@ UE_URL = f"http://127.0.0.1:{UE_PORT}/mcp"
 
 def log(msg: str) -> None:
     ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
-    print(f"[{ts}] {msg}", flush=True)
+    try:
+        print(f"[{ts}] {msg}", flush=True)
+    except (BrokenPipeError, OSError, ValueError):
+        pass
 
 
 def load_manifest() -> list:

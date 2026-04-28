@@ -12,6 +12,7 @@
 #include "Core/ToolRegistry.h"
 #include "Chat/MCPTypes.h"
 #include "Async/Async.h"
+#include "HAL/PlatformProcess.h"
 #include "Framework/Notifications/NotificationManager.h"
 #include "Widgets/Notifications/SNotificationList.h"
 #include "HttpModule.h"
@@ -30,6 +31,29 @@ static const TArray<FString> SUPPORTED_PROTOCOL_VERSIONS = {
 };
 static const FString MCP_SERVER_NAME = TEXT("VibeUE");
 static const FString MCP_SERVER_VERSION = TEXT("1.0.0");
+static const int32 DEFAULT_PROXY_PORT = 18089;
+
+namespace
+{
+FString GetVibeUEManifestPath()
+{
+    FString BaseDir = FPlatformMisc::GetEnvironmentVariable(TEXT("APPDATA"));
+    if (BaseDir.IsEmpty())
+    {
+        BaseDir = FPlatformProcess::UserSettingsDir();
+    }
+    if (BaseDir.IsEmpty())
+    {
+        BaseDir = FPlatformProcess::UserDir();
+    }
+    if (BaseDir.IsEmpty())
+    {
+        BaseDir = FPaths::ProjectSavedDir();
+    }
+
+    return FPaths::ConvertRelativePathToFull(BaseDir / TEXT("VibeUE") / TEXT("tools-manifest.json"));
+}
+}
 
 FMCPServer::FMCPServer()
     : NextEventId(0)
@@ -1478,16 +1502,8 @@ void FMCPServer::ExportToolManifest() const
     TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonString);
     FJsonSerializer::Serialize(ToolsArray, Writer);
 
-    // Write to %APPDATA%/VibeUE/tools-manifest.json
-    FString AppData = FPlatformMisc::GetEnvironmentVariable(TEXT("APPDATA"));
-    if (AppData.IsEmpty())
-    {
-        UE_LOG(LogMCPServer, Warning, TEXT("ExportToolManifest: APPDATA env var not set, skipping export"));
-        return;
-    }
-
-    FString ManifestDir = AppData / TEXT("VibeUE");
-    FString ManifestPath = ManifestDir / TEXT("tools-manifest.json");
+    FString ManifestPath = GetVibeUEManifestPath();
+    FString ManifestDir = FPaths::GetPath(ManifestPath);
 
     IFileManager::Get().MakeDirectory(*ManifestDir, /*Tree=*/true);
 
@@ -1740,7 +1756,7 @@ void FMCPServer::SaveApiKeyToConfig(const FString& ApiKey)
 
 bool FMCPServer::GetProxyEnabledFromConfig()
 {
-    bool bEnabled = false;
+    bool bEnabled = true;
     GConfig->GetBool(TEXT("VibeUE.MCPProxy"), TEXT("Enabled"), bEnabled, GEditorPerProjectIni);
     return bEnabled;
 }
@@ -1753,7 +1769,7 @@ void FMCPServer::SaveProxyEnabledToConfig(bool bEnabled)
 
 bool FMCPServer::GetProxyAutoStartFromConfig()
 {
-    bool bAutoStart = false;
+    bool bAutoStart = true;
     GConfig->GetBool(TEXT("VibeUE.MCPProxy"), TEXT("AutoStart"), bAutoStart, GEditorPerProjectIni);
     return bAutoStart;
 }
@@ -1766,7 +1782,7 @@ void FMCPServer::SaveProxyAutoStartToConfig(bool bAutoStart)
 
 int32 FMCPServer::GetProxyPortFromConfig()
 {
-    int32 Port = 8089;
+    int32 Port = DEFAULT_PROXY_PORT;
     GConfig->GetInt(TEXT("VibeUE.MCPProxy"), TEXT("Port"), Port, GEditorPerProjectIni);
     return Port;
 }
@@ -1858,6 +1874,16 @@ bool FMCPServer::IsProxyRunning() const
         bConnected = false;
     }
 
+    if (bConnected)
+    {
+        FTCHARToUTF8 Probe(TEXT("GET /mcp HTTP/1.0\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n"));
+        int32 BytesSent = 0;
+        if (!TestSocket->Send(reinterpret_cast<const uint8*>(Probe.Get()), Probe.Length(), BytesSent) || BytesSent <= 0)
+        {
+            bConnected = false;
+        }
+    }
+
     SocketSub->DestroySocket(TestSocket);
 
     bCachedProxyRunning = bConnected;
@@ -1866,6 +1892,9 @@ bool FMCPServer::IsProxyRunning() const
 
 bool FMCPServer::StartProxy()
 {
+    // Ensure the proxy config JSON is up to date before either reusing or spawning.
+    WriteProxyConfigJson();
+
     if (IsProxyRunning())
     {
         UE_LOG(LogMCPServer, Log, TEXT("MCP Proxy already running on port %d — skipping start"), GetProxyPortFromConfig());
@@ -1882,12 +1911,34 @@ bool FMCPServer::StartProxy()
     FString ScriptPath = FPaths::ConvertRelativePathToFull(Plugin->GetBaseDir() / TEXT("Content/Python/vibeue-proxy.py"));
 
     FString PythonExe = GetProxyPythonPathFromConfig();
-    if (PythonExe.IsEmpty()) PythonExe = TEXT("python");
+    FString Params;
+#if PLATFORM_WINDOWS
+    if (PythonExe.IsEmpty())
+    {
+        PythonExe = TEXT("python");
+        Params = FString::Printf(TEXT("\"%s\""), *ScriptPath);
+    }
+    else
+    {
+        Params = FString::Printf(TEXT("\"%s\""), *ScriptPath);
+    }
+#else
+    if (PythonExe.IsEmpty())
+    {
+        PythonExe = TEXT("python3");
+    }
 
-    // Ensure the proxy config JSON is up to date before spawning
-    WriteProxyConfigJson();
+    if (FPaths::IsRelative(PythonExe))
+    {
+        Params = FString::Printf(TEXT("%s \"%s\""), *PythonExe, *ScriptPath);
+        PythonExe = TEXT("/usr/bin/env");
+    }
+    else
+    {
+        Params = FString::Printf(TEXT("\"%s\""), *ScriptPath);
+    }
+#endif
 
-    FString Params = FString::Printf(TEXT("\"%s\""), *ScriptPath);
     uint32 OutProcessId = 0;
     ProxyProcHandle = FPlatformProcess::CreateProc(*PythonExe, *Params,
         /*bLaunchDetached=*/false, /*bLaunchHidden=*/true, /*bLaunchReallyHidden=*/true,
@@ -1928,6 +1979,8 @@ void FMCPServer::WriteProxyConfigJson() const
     TSharedPtr<FJsonObject> JsonObj = MakeShared<FJsonObject>();
     JsonObj->SetStringField(TEXT("bearer_token"), GetApiKeyFromConfig());
     JsonObj->SetNumberField(TEXT("proxy_port"),   (double)GetProxyPortFromConfig());
+    JsonObj->SetNumberField(TEXT("ue_port"),      (double)GetPortFromConfig());
+    JsonObj->SetStringField(TEXT("manifest_path"), GetVibeUEManifestPath());
 
     FString JsonStr;
     TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonStr);

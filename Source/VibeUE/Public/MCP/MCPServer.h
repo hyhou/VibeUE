@@ -219,7 +219,7 @@ private:
     TArray<FMCPTool> GetInternalTools() const;
 
     /**
-     * Export tool manifest to %APPDATA%/VibeUE/tools-manifest.json
+     * Export tool manifest to the platform user settings VibeUE directory.
      * Called on successful server start so the MCP proxy can serve
      * tool definitions even when Unreal Engine is not running.
      */
