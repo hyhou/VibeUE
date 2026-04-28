@@ -30,9 +30,14 @@ FString FLogReaderService::GetLogsDirectory() const
 
 FString FLogReaderService::GetMainLogPath() const
 {
-	// Main project log - named after the project
+	// Main project log - named after the project.
+	// Use FPaths::ProjectLogDir() instead of ProjectSavedDir()/Logs because on macOS
+	// the engine writes the main log to ~/Library/Logs/Unreal Engine/<TargetName>/
+	// (FPaths::ProjectLogDir() is platform-aware; on Windows it returns Saved/Logs/).
+	// VibeUE auxiliary logs (VibeUE_Chat.log, VibeUE_RawLLM.log) are written by the
+	// plugin itself always to ProjectSavedDir()/Logs/ and are not affected by this path.
 	FString ProjectName = FApp::GetProjectName();
-	return GetLogsDirectory() / (ProjectName + TEXT(".log"));
+	return FPaths::ProjectLogDir() / (ProjectName + TEXT(".log"));
 }
 
 FString FLogReaderService::GetVibeUEChatLogPath() const
@@ -92,8 +97,19 @@ FString FLogReaderService::ResolveFilePath(const FString& FilePath) const
 		return NormalizedPath;
 	}
 
-	// Try as relative to logs directory
+	// Try as relative to logs directory (VibeUE auxiliary logs at <Project>/Saved/Logs/)
 	FString ResolvedPath = GetLogsDirectory() / FilePath;
+	ResolvedPath = FPaths::ConvertRelativePathToFull(ResolvedPath);
+	if (FPaths::FileExists(ResolvedPath))
+	{
+		return ResolvedPath;
+	}
+
+	// Try as relative to UE project log directory.  On macOS this resolves to
+	// ~/Library/Logs/Unreal Engine/<TargetName>/ (different from GetLogsDirectory()),
+	// where ListLogFiles() now also surfaces basename entries.  Without this fallback
+	// a basename returned by `action=list` cannot be round-tripped to `read`/`tail`.
+	ResolvedPath = FPaths::ProjectLogDir() / FilePath;
 	ResolvedPath = FPaths::ConvertRelativePathToFull(ResolvedPath);
 	if (FPaths::FileExists(ResolvedPath))
 	{
@@ -155,11 +171,34 @@ FString FLogReaderService::DetermineLogCategory(const FString& FilePath) const
 TArray<FLogFileInfo> FLogReaderService::ListLogFiles(const FString& Category)
 {
 	TArray<FLogFileInfo> Results;
-	FString LogsDir = GetLogsDirectory();
 
-	// Find all log files
+	// Collect candidate directories to scan.
+	// On macOS, FPaths::ProjectLogDir() points to ~/Library/Logs/Unreal Engine/<TargetName>/
+	// where the engine writes the main project log.  GetLogsDirectory() points to
+	// <Project>/Saved/Logs/ where VibeUE auxiliary logs live.  On Windows both
+	// resolve to the same path, so adding both is safe (de-duplication via TSet below).
+	TArray<FString> DirsToScan;
+	DirsToScan.Add(FPaths::ConvertRelativePathToFull(FPaths::ProjectLogDir()));
+	DirsToScan.Add(FPaths::ConvertRelativePathToFull(GetLogsDirectory()));
+
+	// De-duplicate in case both dirs are the same (Windows / non-mac platforms)
+	TSet<FString> UniqueFullPaths;
 	TArray<FString> FoundFiles;
-	IFileManager::Get().FindFilesRecursive(FoundFiles, *LogsDir, TEXT("*.log"), true, false);
+
+	for (const FString& Dir : DirsToScan)
+	{
+		TArray<FString> DirFiles;
+		IFileManager::Get().FindFilesRecursive(DirFiles, *Dir, TEXT("*.log"), true, false);
+		for (const FString& FilePath : DirFiles)
+		{
+			FString NormalizedPath = FPaths::ConvertRelativePathToFull(FilePath);
+			if (!UniqueFullPaths.Contains(NormalizedPath))
+			{
+				UniqueFullPaths.Add(NormalizedPath);
+				FoundFiles.Add(NormalizedPath);
+			}
+		}
+	}
 
 	for (const FString& FilePath : FoundFiles)
 	{
