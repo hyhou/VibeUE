@@ -100,7 +100,6 @@ public class VibeUE : ModuleRules
 				"MetasoundEngine",        // For UMetaSoundSource, UMetaSoundBuilderSubsystem, UMetaSoundSourceBuilder
 				"MetasoundFrontend",      // For FMetaSoundFrontendDocumentBuilder, FMetasoundFrontendClassName, ISearchEngine
 				"MetasoundGraphCore",     // For core MetaSound graph types
-				"StructUtils",            // For FInstancedStruct / MakeInstancedStruct support
 			}
 		);
 

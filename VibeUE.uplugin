@@ -58,7 +58,15 @@
 			"Enabled": true
 		},
 		{
+			"Name": "CommonUI",
+			"Enabled": true
+		},
+		{
 			"Name": "StateTree",
+			"Enabled": true
+		},
+		{
+			"Name": "GameplayTagsEditor",
 			"Enabled": true
 		},
 		{
