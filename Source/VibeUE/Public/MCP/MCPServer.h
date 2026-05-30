@@ -159,7 +159,7 @@ public:
     /** Process pending requests on game thread (called by tick) */
     void ProcessPendingRequests();
     
-    /** Validate VibeUE API key asynchronously - sets bIsVibeUEApiKeyValid */
+    /** Local MCP tools do not require cloud VibeUE API key validation. */
     void ValidateVibeUEApiKeyAsync();
 
 private:

@@ -15,9 +15,6 @@
 #include "HAL/PlatformProcess.h"
 #include "Framework/Notifications/NotificationManager.h"
 #include "Widgets/Notifications/SNotificationList.h"
-#include "HttpModule.h"
-#include "Interfaces/IHttpRequest.h"
-#include "Interfaces/IHttpResponse.h"
 
 DEFINE_LOG_CATEGORY(LogMCPServer);
 
@@ -132,16 +129,14 @@ bool FMCPServer::Start()
         return true;
     }
 
-    // Re-validate VibeUE API key each time the server starts (picks up any key changes from settings)
+    // Local MCP tool execution is project-local and does not require VibeUE cloud authentication.
     ValidateVibeUEApiKeyAsync();
 
     if (Config.ApiKey.IsEmpty())
     {
-        UE_LOG(LogMCPServer, Error, TEXT(
-            "SECURITY WARNING: VibeUE MCP server is starting with NO API key set. "
-            "Any local process on this machine can connect and execute tools without authentication "
-            "-- including file access, asset changes, and arbitrary Python code execution inside Unreal Engine. "
-            "Set an API key in Project Settings -> Plugins -> VibeUE -> API Key to restrict access."));
+        UE_LOG(LogMCPServer, Log, TEXT(
+            "VibeUE MCP server is starting in local unauthenticated mode. "
+            "Connections are bound to localhost; set an optional bearer token only if local auth is needed."));
     }
 
     UE_LOG(LogMCPServer, Log, TEXT("Starting MCP Server on port %d..."), Config.Port);
@@ -1329,46 +1324,8 @@ bool FMCPServer::ValidateApiKey(const TMap<FString, FString>& Headers) const
 }
 void FMCPServer::ValidateVibeUEApiKeyAsync()
 {
-    FString VibeUEApiKey;
-    GConfig->GetString(TEXT("VibeUE"), TEXT("VibeUEApiKey"), VibeUEApiKey, GEditorPerProjectIni);
-
-    if (VibeUEApiKey.IsEmpty())
-    {
-        bIsVibeUEApiKeyValid = false;
-        UE_LOG(LogMCPServer, Warning, TEXT("VibeUE API key not configured - MCP tools will require a valid key. Get one free at https://www.vibeue.com/login"));
-        return;
-    }
-
-    UE_LOG(LogMCPServer, Log, TEXT("Validating VibeUE API key..."));
-
-    TWeakPtr<FMCPServer> WeakThis = Instance;
-
-    TSharedRef<IHttpRequest, ESPMode::ThreadSafe> HttpRequest = FHttpModule::Get().CreateRequest();
-    HttpRequest->SetURL(TEXT("https://llm.vibeue.com/v1/auth/validate"));
-    HttpRequest->SetVerb(TEXT("GET"));
-    HttpRequest->SetHeader(TEXT("X-API-Key"), VibeUEApiKey);
-    HttpRequest->OnProcessRequestComplete().BindLambda(
-        [WeakThis](FHttpRequestPtr /*Request*/, FHttpResponsePtr Response, bool bConnectedSuccessfully)
-        {
-            TSharedPtr<FMCPServer> StrongThis = WeakThis.Pin();
-            if (!StrongThis.IsValid())
-            {
-                return;
-            }
-
-            if (bConnectedSuccessfully && Response.IsValid() && Response->GetResponseCode() == 200)
-            {
-                StrongThis->bIsVibeUEApiKeyValid = true;
-                UE_LOG(LogMCPServer, Log, TEXT("VibeUE API key validated successfully - MCP tools are available"));
-            }
-            else
-            {
-                StrongThis->bIsVibeUEApiKeyValid = false;
-                int32 ResponseCode = Response.IsValid() ? Response->GetResponseCode() : 0;
-                UE_LOG(LogMCPServer, Warning, TEXT("VibeUE API key validation failed (HTTP %d) - MCP tools unavailable. Get a valid key at https://www.vibeue.com/login"), ResponseCode);
-            }
-        });
-    HttpRequest->ProcessRequest();
+    bIsVibeUEApiKeyValid = true;
+    UE_LOG(LogMCPServer, Log, TEXT("Skipping VibeUE cloud API key validation for local MCP tools."));
 }
 bool FMCPServer::ValidateOrigin(const TMap<FString, FString>& Headers) const
 {
