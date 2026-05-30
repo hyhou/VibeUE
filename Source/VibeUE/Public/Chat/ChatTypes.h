@@ -172,7 +172,7 @@ struct VIBEUE_API FChatMessage
     FString ThinkingContent;
     
     /** When the message was sent or received */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chat")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chat", meta = (IgnoreForMemberInitializationTest))
     FDateTime Timestamp;
     
     /** True while the message is still being streamed from the API */
