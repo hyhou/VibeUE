@@ -23,6 +23,24 @@ unreal.DataAssetService.set_property(path, "Damage", "75")
 unreal.DataAssetService.set_property(path, "IsActive", "true")
 ```
 
+### ⚠️ Enum Backed ByteProperty Values
+
+Some Blueprint/DataAsset style assets expose enum-like fields as raw `ByteProperty`.
+If `get_editor_property()` returns an enum wrapper such as `ColorPalette.PRIMARY`,
+do not pass that wrapper directly into a byte field. Convert through `int(value.value)`.
+
+```python
+import unreal
+
+source_cdo = unreal.load_object(None, "/Game/MenuSystemPro/Styles/PDA_ButtonStyle.Default__PDA_ButtonStyle_C")
+target_cdo = unreal.load_object(None, "/Game/NBGame/UI/Styles/DA_NBButtonStyle.Default__DA_NBButtonStyle_C")
+
+palette = source_cdo.get_editor_property("BackgroundColor")
+target_cdo.set_editor_property("BackgroundColor", int(palette.value))
+```
+
+If the readback is an integer such as `0`, treat it as the stored byte value and compare it against the source enum intentionally; do not assume the named enum display text is preserved.
+
 ### ⚠️ Complex Properties Use Unreal String Format, NOT JSON
 
 ```python
@@ -86,6 +104,9 @@ unreal.DataAssetService.set_property(path, "Location", "(X=100.0,Y=200.0,Z=50.0)
 
 # FLinearColor
 unreal.DataAssetService.set_property(path, "Color", "(R=1.0,G=0.5,B=0.0,A=1.0)")
+
+# FSlateColor, for widget text colors stored as SlateColor
+unreal.DataAssetService.set_property(path, "TextColor", "(SpecifiedColor=(R=0.9,G=0.9,B=0.8,A=1.0))")
 
 # Custom struct
 unreal.DataAssetService.set_property(path, "Stats", "(Attack=75,Defense=50)")

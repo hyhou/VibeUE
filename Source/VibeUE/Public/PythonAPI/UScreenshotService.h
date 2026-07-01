@@ -54,6 +54,8 @@ struct FEditorTabInfo
 	bool bIsForeground = false;
 };
 
+class SWindow;
+
 /**
  * Service for capturing screenshots of editor windows and viewports.
  * Provides Python-accessible methods for AI vision capabilities.
@@ -147,6 +149,31 @@ private:
 	 * @param OutResult - Result structure to populate
 	 */
 	static void CaptureWindowToFile(void* WindowHandle, const FString& FilePath, FScreenshotResult& OutResult);
+
+	/**
+	 * Find a Slate window for cross-platform editor screenshots.
+	 * @param bPreferMainFrame - Prefer the main Unreal Editor frame over the active tab/window.
+	 * @return Slate window or nullptr if none is available
+	 */
+	static TSharedPtr<SWindow> FindSlateWindowForCapture(bool bPreferMainFrame);
+
+	/**
+	 * Capture a Slate window synchronously to a file.
+	 * @param Window - Slate window to capture
+	 * @param FilePath - Output file path
+	 * @param OutResult - Result structure to populate
+	 */
+	static void CaptureSlateWindowToFile(TSharedPtr<SWindow> Window, const FString& FilePath, FScreenshotResult& OutResult);
+
+	/**
+	 * Save Slate BGRA color data to PNG file.
+	 * @param Colors - BGRA pixels from FSlateApplication::TakeScreenshot
+	 * @param Width - Image width
+	 * @param Height - Image height
+	 * @param FilePath - Output file path
+	 * @return True if save succeeded
+	 */
+	static bool SaveColorsAsPNG(const TArray<FColor>& Colors, int32 Width, int32 Height, const FString& FilePath);
 
 	/**
 	 * Save raw bitmap data to PNG file

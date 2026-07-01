@@ -116,6 +116,29 @@ unreal.BlueprintService.compile_blueprint(path)  # REQUIRED before adding nodes
 unreal.BlueprintService.add_get_variable_node(path, func, "Health", x, y)
 ```
 
+### ⚠️ Node Pins Are Often Configuration, Not Properties
+
+Some node setup must be written through pins. Do not try to configure these through generic object properties:
+
+```python
+# CreateWidget: Class is a pin
+unreal.BlueprintService.set_node_pin_value(bp_path, graph, create_widget_id, "Class", "/Game/UI/WBP_MyWidget.WBP_MyWidget_C")
+
+# Literal bool / numeric defaults
+unreal.BlueprintService.set_node_pin_value(bp_path, graph, literal_bool_id, "Value", "true")
+unreal.BlueprintService.set_node_pin_value(bp_path, graph, timer_id, "Time", "1.0")
+```
+
+For struct pins, split first, then re-read pins before wiring fields:
+
+```python
+unreal.BlueprintService.split_pin(bp_path, graph, node_id, "ProgressView")
+pins = unreal.BlueprintService.get_node_pins(bp_path, graph, node_id)
+print([p.pin_name for p in pins])
+```
+
+StandardMacros nodes such as `ForEachLoop` may fail to create with zero pins through the current service path. If repeated discovery/create attempts return empty GUIDs or zero pins, use an existing helper function, C++ helper, or mark a manual graph step instead of leaving floating half-created macro nodes.
+
 ### ⚠️ Node IDs Are GUID Strings, Not Small Integers
 
 Do **not** assume Blueprint nodes have numeric IDs like `0` or `1`.

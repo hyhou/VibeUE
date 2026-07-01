@@ -97,6 +97,7 @@ public class VibeUE : ModuleRules
 				"PropertyBindingUtils",    // For FPropertyBindingBindableStructDescriptor (base of FStateTreeBindableStructDesc)
 				"GameplayTags",           // For FGameplayTag (required by StateTree)
 				"AudioEditor",            // For SoundCue graph classes (USoundCueGraphNode, USoundCueGraph, USoundCueFactoryNew)
+				"ImageCore",              // For focused widget preview crop readback
 				"MetasoundEngine",        // For UMetaSoundSource, UMetaSoundBuilderSubsystem, UMetaSoundSourceBuilder
 				"MetasoundFrontend",      // For FMetaSoundFrontendDocumentBuilder, FMetasoundFrontendClassName, ISearchEngine
 				"MetasoundGraphCore",     // For core MetaSound graph types
@@ -114,6 +115,7 @@ public class VibeUE : ModuleRules
 					"UMGEditor",           // For WidgetBlueprint.h and other UMG editor functionality
 					"MaterialEditor",      // For material editor integration
 					"LevelEditor",         // For global keyboard shortcuts
+					"MainFrame",           // For stable editor window lookup in screenshots
 					"StatusBar",           // For panel drawer integration
 					"ContentBrowser",      // For content browser selection queries
 					"MetasoundEditor",     // For UMetaSoundEditorSubsystem (FindOrBeginBuilding, BuildToAsset)

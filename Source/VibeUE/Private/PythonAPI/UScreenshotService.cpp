@@ -23,7 +23,9 @@
 #include "Subsystems/AssetEditorSubsystem.h"
 #include "Framework/Docking/TabManager.h"
 #include "Framework/Application/SlateApplication.h"
+#include "Interfaces/IMainFrameModule.h"
 #include "UnrealClient.h"
+#include "Widgets/SWindow.h"
 
 UScreenshotService::UScreenshotService()
 {
@@ -104,8 +106,16 @@ FScreenshotResult UScreenshotService::CaptureEditorWindow(const FString& FilePat
 		Result.Message = TEXT("Failed to find Unreal Editor window handle");
 	}
 #else
-	Result.bSuccess = false;
-	Result.Message = TEXT("Screenshot capture only supported on Windows platform");
+	TSharedPtr<SWindow> Window = FindSlateWindowForCapture(true);
+	if (Window.IsValid())
+	{
+		CaptureSlateWindowToFile(Window, NormalizedPath, Result);
+	}
+	else
+	{
+		Result.bSuccess = false;
+		Result.Message = TEXT("Failed to find Unreal Editor Slate window");
+	}
 #endif
 
 	return Result;
@@ -129,8 +139,16 @@ FScreenshotResult UScreenshotService::CaptureActiveWindow(const FString& FilePat
 		Result.Message = TEXT("No active window found");
 	}
 #else
-	Result.bSuccess = false;
-	Result.Message = TEXT("Screenshot capture only supported on Windows platform");
+	TSharedPtr<SWindow> Window = FindSlateWindowForCapture(false);
+	if (Window.IsValid())
+	{
+		CaptureSlateWindowToFile(Window, NormalizedPath, Result);
+	}
+	else
+	{
+		Result.bSuccess = false;
+		Result.Message = TEXT("No active Slate window found");
+	}
 #endif
 
 	return Result;
@@ -179,6 +197,12 @@ FString UScreenshotService::GetActiveWindowTitle()
 			return FString(Buffer.GetData());
 		}
 	}
+#else
+	TSharedPtr<SWindow> Window = FindSlateWindowForCapture(false);
+	if (Window.IsValid())
+	{
+		return Window->GetTitle().ToString();
+	}
 #endif
 	return FString();
 }
@@ -190,7 +214,7 @@ bool UScreenshotService::IsEditorWindowActive()
 	void* EditorHandle = FindEditorWindowHandle();
 	return ForegroundWindow == EditorHandle;
 #else
-	return false;
+	return FindSlateWindowForCapture(false).IsValid();
 #endif
 }
 
@@ -369,6 +393,104 @@ void UScreenshotService::CaptureWindowToFile(void* WindowHandle, const FString& 
 	OutResult.bSuccess = false;
 	OutResult.Message = TEXT("Screenshot capture only supported on Windows");
 #endif
+}
+
+TSharedPtr<SWindow> UScreenshotService::FindSlateWindowForCapture(bool bPreferMainFrame)
+{
+	if (!FSlateApplication::IsInitialized())
+	{
+		return nullptr;
+	}
+
+	if (bPreferMainFrame && FModuleManager::Get().IsModuleLoaded(TEXT("MainFrame")))
+	{
+		IMainFrameModule& MainFrameModule = FModuleManager::LoadModuleChecked<IMainFrameModule>(TEXT("MainFrame"));
+		TSharedPtr<SWindow> MainWindow = MainFrameModule.GetParentWindow();
+		if (MainWindow.IsValid() && MainWindow->IsVisible() && !MainWindow->IsWindowMinimized())
+		{
+			return MainWindow;
+		}
+	}
+
+	TSharedPtr<SWindow> ActiveWindow = FSlateApplication::Get().GetActiveTopLevelWindow();
+	if (ActiveWindow.IsValid() && ActiveWindow->IsVisible() && !ActiveWindow->IsWindowMinimized())
+	{
+		return ActiveWindow;
+	}
+
+	TArray<TSharedRef<SWindow>> VisibleWindows;
+	FSlateApplication::Get().GetAllVisibleWindowsOrdered(VisibleWindows);
+	if (VisibleWindows.Num() > 0)
+	{
+		return VisibleWindows.Last();
+	}
+
+	return nullptr;
+}
+
+void UScreenshotService::CaptureSlateWindowToFile(TSharedPtr<SWindow> Window, const FString& FilePath, FScreenshotResult& OutResult)
+{
+	if (!Window.IsValid())
+	{
+		OutResult.bSuccess = false;
+		OutResult.Message = TEXT("Invalid Slate window");
+		return;
+	}
+
+	TArray<FColor> PixelData;
+	FIntVector ImageSize;
+	TSharedRef<SWidget> WindowWidget = Window.ToSharedRef();
+	if (!FSlateApplication::Get().TakeScreenshot(WindowWidget, PixelData, ImageSize))
+	{
+		OutResult.bSuccess = false;
+		OutResult.Message = TEXT("Slate screenshot failed");
+		return;
+	}
+
+	const int32 Width = ImageSize.X;
+	const int32 Height = ImageSize.Y;
+	OutResult.Width = Width;
+	OutResult.Height = Height;
+	OutResult.CapturedWindowTitle = Window->GetTitle().ToString();
+
+	if (Width <= 0 || Height <= 0 || PixelData.Num() < Width * Height)
+	{
+		OutResult.bSuccess = false;
+		OutResult.Message = TEXT("Invalid Slate screenshot dimensions");
+		return;
+	}
+
+	if (SaveColorsAsPNG(PixelData, Width, Height, FilePath))
+	{
+		OutResult.bSuccess = true;
+		OutResult.Message = FString::Printf(TEXT("Slate screenshot saved successfully (%dx%d)"), Width, Height);
+	}
+	else
+	{
+		OutResult.bSuccess = false;
+		OutResult.Message = TEXT("Failed to save Slate screenshot PNG file");
+	}
+}
+
+bool UScreenshotService::SaveColorsAsPNG(const TArray<FColor>& Colors, int32 Width, int32 Height, const FString& FilePath)
+{
+	if (Width <= 0 || Height <= 0 || Colors.Num() < Width * Height)
+	{
+		return false;
+	}
+
+	FString Directory = FPaths::GetPath(FilePath);
+	if (!Directory.IsEmpty())
+	{
+		IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
+		if (!PlatformFile.DirectoryExists(*Directory))
+		{
+			PlatformFile.CreateDirectoryTree(*Directory);
+		}
+	}
+
+	FImageView Image(Colors.GetData(), Width, Height);
+	return FImageUtils::SaveImageByExtension(*FilePath, Image);
 }
 
 bool UScreenshotService::SaveBitmapAsPNG(const TArray<uint8>& BitmapData, int32 Width, int32 Height, const FString& FilePath)

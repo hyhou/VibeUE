@@ -37,15 +37,18 @@ widget_asset = asset_tools.create_asset("MainMenu", "/Game/UI", unreal.WidgetBlu
 
 ### ⚠️ Hierarchy Rules
 
-1. **Set root first** with `set_as_root=True`
+1. **Create root first** by adding the first widget with an empty parent
 2. **Parent must exist** before adding children
+3. The fifth `add_component` argument is `bIsVariable`, not `set_as_root`
 
 ```python
-# Root first
+# Root first: empty parent sets this as root only when the WBP has no root yet
 unreal.WidgetService.add_component(path, "CanvasPanel", "RootCanvas", "", True)
-# Then children
+# Then children: parent must be an existing panel widget
 unreal.WidgetService.add_component(path, "Button", "PlayButton", "RootCanvas", False)
 ```
+
+If a root already exists and the parent name is empty, `add_component` fails with "no parent specified and root already exists".
 
 ### ⚠️ Property Values Are ALWAYS Strings
 
@@ -91,10 +94,11 @@ Always create the animation first, then add the track, then add keyframes.
 
 ### ⚠️ Preview And PIE Have Different Purposes
 
-- `capture_preview` renders an editor-side PNG without starting gameplay
+- `capture_preview` renders an editor-side full-canvas PNG without starting gameplay
+- `capture_preview_focused` renders the same widget and saves a tight crop around visible content
 - `start_pie` and `spawn_widget_in_pie` are for runtime verification against a live widget instance
 
-Use preview first for appearance checks, then PIE only when you need runtime state or live property reads.
+Use focused preview first for static appearance/layout checks, then PIE only when you need runtime state or live property reads.
 
 ### ⚠️ WidgetPropertyInfo Field Names
 
@@ -141,6 +145,14 @@ unreal.EditorAssetLibrary.save_asset(path)
 - The custom WBP must already exist before adding it as a component
 - **Circular references are rejected** — a WBP cannot contain itself as a child
 - The parent WBP is automatically compiled after adding a custom WBP child
+- Do not trust only the returned `ComponentName`; for custom WBPs, verify the final node through `get_hierarchy()` or `get_widget_snapshot()`
+
+### ⚠️ Visibility, Slots, And Visual Proof
+
+- `get_hierarchy()` proves tree membership only. It does not prove `Visibility`, layout slot values, paint size, or visual correctness.
+- For display bugs, read key nodes with `get_property(path, name, "Visibility")`.
+- For slot layout, prefer `get_widget_snapshot()` / `get_component_snapshot()` first. If a slot alias like `Position X` or `Size Y` does not stick, load the actual `CanvasPanelSlot`, `HorizontalBoxSlot`, or `OverlaySlot` and set the slot object directly.
+- After structural readback, capture `capture_preview_focused()` for static WBP appearance. Use PIE only for runtime data, input, or live widget instances.
 
 ---
 
@@ -261,12 +273,25 @@ import unreal
 
 result = unreal.WidgetService.capture_preview(
     "/Game/UI/WBP_MainMenu",
-    unreal.Paths.project_saved_dir() + "WidgetPreviews/WBP_MainMenu.png",
     1280,
     720,
 )
 
-print(result.b_success, result.output_path, result.error_message)
+print(result.success, result.output_path, result.focused_output_path, result.error_message)
+print(result.content_x, result.content_y, result.content_width, result.content_height)
+```
+
+### Capture Focused Preview Crop
+
+Use this for AI visual review of a single widget. It avoids wasting context on a large black canvas.
+
+```python
+import unreal
+
+result = unreal.WidgetService.capture_preview_focused("/Game/UI/WBP_MainMenu", 1920, 1080, 0)
+
+print(result.success, result.output_path, result.error_message)
+print("bbox", result.content_x, result.content_y, result.content_width, result.content_height)
 ```
 
 ### Spawn And Inspect Widget In PIE
@@ -483,10 +508,15 @@ Returned by `get_widget_snapshot()` and `get_component_snapshot()`. Has all `FWi
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `b_success` | bool | True when the preview PNG was written |
+| `success` | bool | True when the preview PNG was written (`bSuccess` in C++) |
 | `output_path` | str | Saved image path |
+| `focused_output_path` | str | Tight visible-content crop path, when generated |
 | `width` | int | Render width |
 | `height` | int | Render height |
+| `content_x` | int | Focused crop X in the original render canvas |
+| `content_y` | int | Focused crop Y in the original render canvas |
+| `content_width` | int | Focused crop width |
+| `content_height` | int | Focused crop height |
 | `error_message` | str | Failure message when `b_success` is false |
 
 ## FPIEWidgetHandle Field Names
@@ -515,7 +545,8 @@ Returned by `get_widget_snapshot()` and `get_component_snapshot()`. Has all `FWi
 | `set_font` / `get_font` | Full font configuration on a text widget |
 | `set_brush` / `get_brush` | Full brush configuration on an image widget |
 | `create_animation` / `add_animation_track` / `add_keyframe` | Widget animations |
-| `capture_preview` | Render a PNG without starting PIE |
+| `capture_preview` | Render a full canvas PNG without starting PIE; also reports focused bbox fields |
+| `capture_preview_focused` | Render and save a tight visible-content crop without starting PIE |
 | `start_pie` / `stop_pie` / `spawn_widget_in_pie` | Runtime PIE testing |
 
 ## Event Names

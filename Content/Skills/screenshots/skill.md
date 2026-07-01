@@ -15,11 +15,32 @@ keywords:
 
 # Screenshot & Vision Skill
 
+## Boundary With Widget Preview
+
+For static UMG/WBP layout review, prefer:
+
+```python
+result = unreal.WidgetService.capture_preview_focused("/Game/UI/WBP_MainMenu", 1920, 1080, 0)
+```
+
+This returns a tight object crop and bbox fields, which is cheaper and more precise than a whole editor-window screenshot.
+Use this screenshot skill for Editor/PIE/world-state captures, Blueprint tabs, material editors, level viewport evidence, or any case where the surrounding editor state matters.
+
+Before taking an editor-window screenshot, verify what is actually focused:
+
+```python
+print(unreal.ScreenshotService.get_active_window_title())
+for tab in unreal.ScreenshotService.get_open_editor_tabs():
+    print(tab.tab_label, tab.is_foreground, tab.asset_path)
+```
+
+Operation logs show `capture_editor_window` can capture a modal error window or a Blueprint Compilation Errors tab when that is foreground. If the goal is a specific WBP visual, use `capture_preview_focused` instead of trying to recover by taking more whole-window screenshots.
+
 ## Methods
 
 | Method | Use Case |
 |--------|----------|
-| `capture_editor_window(path)` | **DEFAULT — use this for everything.** Synchronous. Captures the whole editor window including any open tab (level viewport, Blueprint, Material, etc.) |
+| `capture_editor_window(path)` | Default for Editor/PIE/world-state evidence. Synchronous. Captures the whole editor window including any open tab (level viewport, Blueprint, Material, etc.) |
 | `capture_active_window(path)` | Whatever window is currently focused |
 | `get_active_window_title()` | Check what's in focus |
 | `get_open_editor_tabs()` | List open asset editors |

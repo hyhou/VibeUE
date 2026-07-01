@@ -63,6 +63,31 @@ unreal.AssetDiscoveryService.move_asset(
 # manage_asset(action="move", source_path="/Game/StateTree/STT_Rotate", destination_path="/Game/StateTree/Tasks/STT_Rotate")
 ```
 
+### ⚠️ Migration/Delete Scans Need AssetRegistry Evidence
+
+For package deletion, redirector cleanup, or plugin/vendor asset removal, do not rely only on `delete_asset` failing or succeeding. Run an explicit AssetRegistry scan first:
+
+```python
+import unreal
+
+ar = unreal.AssetRegistryHelpers.get_asset_registry()
+opts = unreal.AssetRegistryDependencyOptions()
+opts.include_hard_package_references = True
+opts.include_soft_package_references = True
+opts.include_searchable_names = True
+opts.include_soft_management_references = True
+opts.include_hard_management_references = True
+
+pkg = unreal.Name("/Game/MenuSystemPro/Blueprints/Core/DA_GlobalMenuConfig")
+referencers = ar.get_referencers(pkg, opts)
+dependencies = ar.get_dependencies(pkg, opts)
+
+print("referencers", [str(x) for x in referencers])
+print("dependencies", [str(x) for x in dependencies])
+```
+
+Classify results by path prefix (`/Game/NBGame`, `/Game/Vendor`, `/NBAssetVault`, etc.) before deleting. A redirector can be deleted only after the target asset exists and `get_referencers(..., soft+hard)` is empty.
+
 ### ⚠️ Methods NOT Available
 
 | Does NOT Exist | Alternative |
