@@ -3933,6 +3933,94 @@ FWidgetSlotInfo UWidgetService::BuildSlotInfo(UWidget* Widget)
 	return SlotInfo;
 }
 
+bool UWidgetService::SetSlotInfo(
+	const FString& WidgetPath,
+	const FString& ComponentName,
+	const FWidgetSlotInfo& SlotInfo)
+{
+	UWidgetBlueprint* WidgetBP = LoadWidgetBlueprint(WidgetPath);
+	if (!WidgetBP)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UWidgetService::SetSlotInfo: Failed to load Widget Blueprint: %s"), *WidgetPath);
+		return false;
+	}
+
+	UWidget* Widget = FindWidgetByName(WidgetBP, ComponentName);
+	if (!Widget)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UWidgetService::SetSlotInfo: Widget '%s' not found in %s"), *ComponentName, *WidgetPath);
+		return false;
+	}
+
+	if (!Widget->Slot)
+	{
+		// Root widget or slot not yet created — cannot modify layout.
+		UE_LOG(LogTemp, Warning, TEXT("UWidgetService::SetSlotInfo: Widget '%s' has no Slot (root widget?)"), *ComponentName);
+		return false;
+	}
+
+	bool bApplied = false;
+
+	if (UCanvasPanelSlot* CanvasSlot = Cast<UCanvasPanelSlot>(Widget->Slot))
+	{
+		FAnchorData Layout;
+		Layout.Anchors.Minimum = SlotInfo.AnchorMin;
+		Layout.Anchors.Maximum = SlotInfo.AnchorMax;
+		Layout.Offsets = SlotInfo.Offsets;
+		Layout.Alignment = SlotInfo.Alignment;
+		CanvasSlot->SetLayout(Layout);
+		CanvasSlot->SetZOrder(SlotInfo.ZOrder);
+		CanvasSlot->SetAutoSize(SlotInfo.bAutoSize);
+		bApplied = true;
+	}
+	else if (UVerticalBoxSlot* VBoxSlot = Cast<UVerticalBoxSlot>(Widget->Slot))
+	{
+		FSlateChildSize Size;
+		Size.SizeRule = SlotInfo.SizeRule.Equals(TEXT("Fill"), ESearchCase::IgnoreCase)
+			? ESlateSizeRule::Fill : ESlateSizeRule::Automatic;
+		Size.Value = SlotInfo.SizeValue;
+		VBoxSlot->SetSize(Size);
+		VBoxSlot->SetPadding(SlotInfo.Padding);
+		VBoxSlot->SetHorizontalAlignment(SlotInfo.HorizontalAlignment);
+		VBoxSlot->SetVerticalAlignment(SlotInfo.VerticalAlignment);
+		bApplied = true;
+	}
+	else if (UHorizontalBoxSlot* HBoxSlot = Cast<UHorizontalBoxSlot>(Widget->Slot))
+	{
+		FSlateChildSize Size;
+		Size.SizeRule = SlotInfo.SizeRule.Equals(TEXT("Fill"), ESearchCase::IgnoreCase)
+			? ESlateSizeRule::Fill : ESlateSizeRule::Automatic;
+		Size.Value = SlotInfo.SizeValue;
+		HBoxSlot->SetSize(Size);
+		HBoxSlot->SetPadding(SlotInfo.Padding);
+		HBoxSlot->SetHorizontalAlignment(SlotInfo.HorizontalAlignment);
+		HBoxSlot->SetVerticalAlignment(SlotInfo.VerticalAlignment);
+		bApplied = true;
+	}
+	else if (UOverlaySlot* OverlaySlot = Cast<UOverlaySlot>(Widget->Slot))
+	{
+		OverlaySlot->SetPadding(SlotInfo.Padding);
+		OverlaySlot->SetHorizontalAlignment(SlotInfo.HorizontalAlignment);
+		OverlaySlot->SetVerticalAlignment(SlotInfo.VerticalAlignment);
+		bApplied = true;
+	}
+
+	if (bApplied)
+	{
+		// Mark slot object + BP asset as modified so the change persists across save/compile.
+		Widget->Slot->Modify();
+		Widget->Modify();
+		MarkWidgetBlueprintModified(WidgetBP);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UWidgetService::SetSlotInfo: Slot type '%s' on '%s' not supported"),
+			*Widget->Slot->GetClass()->GetName(), *ComponentName);
+	}
+
+	return bApplied;
+}
+
 TArray<FWidgetPropertyInfo> UWidgetService::CollectWidgetProperties(UWidget* Widget)
 {
 	TArray<FWidgetPropertyInfo> Properties;
