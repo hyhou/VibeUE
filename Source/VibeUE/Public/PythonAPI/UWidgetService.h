@@ -1102,6 +1102,31 @@ public:
 	UFUNCTION(BlueprintCallable, meta = (AICallable), Category = "VibeUE|Widgets|Exists")
 	static bool WidgetExists(const FString& WidgetPath, const FString& ComponentName);
 
+	/**
+	 * Apply slot layout (FWidgetSlotInfo) onto a widget component in a Widget Blueprint.
+	 *
+	 * This writes the BP-asset template slot directly (via FindWidgetByName → Widget->Slot),
+	 * NOT a runtime/compiled instance, so changes persist across compile/save — unlike
+	 * ObjectIterator-based slot mutation which gets overwritten on compile.
+	 *
+	 * SlotType field selects which fields are written:
+	 *   "Canvas"        -> AnchorMin/Max, Offsets, Alignment, ZOrder, bAutoSize
+	 *   "VerticalBox"   -> SizeRule, SizeValue, Padding, HorizontalAlignment, VerticalAlignment
+	 *   "HorizontalBox" -> SizeRule, SizeValue, Padding, HorizontalAlignment, VerticalAlignment
+	 *   "Overlay"       -> Padding, HorizontalAlignment, VerticalAlignment
+	 *
+	 * Recommended workflow: get_component_snapshot() → mutate slot_info → set_slot_info() → save.
+	 *
+	 * @param WidgetPath    Full path to the Widget Blueprint (e.g. "/Game/UI/WBP_MainMenu")
+	 * @param ComponentName Name of the widget component whose slot to modify
+	 * @param SlotInfo      Slot layout to apply (use snapshot.slot_info as starting point)
+	 * @return True if the slot was found and at least one field applied
+	 */
+	UFUNCTION(BlueprintCallable, Category = "VibeUE|Widgets|Layout",
+		meta = (DisplayName = "Set Slot Info"))
+	static bool SetSlotInfo(const FString& WidgetPath, const FString& ComponentName,
+	                        const FWidgetSlotInfo& SlotInfo);
+
 private:
 	/** Build slot info by casting Widget->Slot to the concrete slot type */
 	static FWidgetSlotInfo BuildSlotInfo(class UWidget* Widget);
