@@ -72,6 +72,8 @@
 #include "Engine/Texture2D.h"
 #include "Engine/TextureRenderTarget2D.h"
 #include "Fonts/SlateFontInfo.h"
+#include "Framework/Application/SlateApplication.h"
+#include "ImageCore.h"
 #include "ImageUtils.h"
 #include "Materials/MaterialInterface.h"
 #include "Misc/FileHelper.h"
@@ -2553,10 +2555,126 @@ bool UWidgetService::AddKeyframe(
 	return true;
 }
 
-FWidgetPreviewResult UWidgetService::CapturePreview(
+namespace
+{
+	bool ReadRenderTargetAsBGRA8(UTextureRenderTarget2D* RenderTarget, FImage& OutImage, FString& OutError)
+	{
+		if (!RenderTarget)
+		{
+			OutError = TEXT("Preview render target is null.");
+			return false;
+		}
+
+		FImage SourceImage;
+		if (!FImageUtils::GetRenderTargetImage(RenderTarget, SourceImage))
+		{
+			OutError = TEXT("Failed to read preview render target pixels.");
+			return false;
+		}
+
+		if (SourceImage.Format == ERawImageFormat::BGRA8)
+		{
+			OutImage = MoveTemp(SourceImage);
+			return true;
+		}
+
+		OutImage.Init(SourceImage.SizeX, SourceImage.SizeY, SourceImage.NumSlices, ERawImageFormat::BGRA8, EGammaSpace::sRGB);
+		FImageCore::CopyImage(SourceImage, OutImage);
+		return true;
+	}
+
+	bool FindVisibleContentRect(const FImage& Image, FIntRect& OutRect)
+	{
+		if (Image.Format != ERawImageFormat::BGRA8 || Image.SizeX <= 0 || Image.SizeY <= 0)
+		{
+			return false;
+		}
+
+		const TArrayView64<const FColor> Pixels = Image.AsBGRA8();
+		int32 MinX = Image.SizeX;
+		int32 MinY = Image.SizeY;
+		int32 MaxX = -1;
+		int32 MaxY = -1;
+
+		for (int32 Y = 0; Y < Image.SizeY; ++Y)
+		{
+			for (int32 X = 0; X < Image.SizeX; ++X)
+			{
+				const FColor& Pixel = Pixels[static_cast<int64>(Y) * Image.SizeX + X];
+				if (Pixel.A > 0)
+				{
+					MinX = FMath::Min(MinX, X);
+					MinY = FMath::Min(MinY, Y);
+					MaxX = FMath::Max(MaxX, X);
+					MaxY = FMath::Max(MaxY, Y);
+				}
+			}
+		}
+
+		if (MaxX < MinX || MaxY < MinY)
+		{
+			return false;
+		}
+
+		OutRect = FIntRect(MinX, MinY, MaxX + 1, MaxY + 1);
+		return true;
+	}
+
+	FIntRect ExpandAndClampRect(const FIntRect& Rect, int32 ImageWidth, int32 ImageHeight, int32 Padding)
+	{
+		const int32 SafePadding = FMath::Max(0, Padding);
+		return FIntRect(
+			FMath::Clamp(Rect.Min.X - SafePadding, 0, ImageWidth),
+			FMath::Clamp(Rect.Min.Y - SafePadding, 0, ImageHeight),
+			FMath::Clamp(Rect.Max.X + SafePadding, 0, ImageWidth),
+			FMath::Clamp(Rect.Max.Y + SafePadding, 0, ImageHeight));
+	}
+
+	bool SaveCroppedBGRA8PNG(const FImage& SourceImage, const FIntRect& CropRect, const FString& OutputPath, FString& OutError)
+	{
+		if (SourceImage.Format != ERawImageFormat::BGRA8 || CropRect.Width() <= 0 || CropRect.Height() <= 0)
+		{
+			OutError = TEXT("Invalid focused preview crop.");
+			return false;
+		}
+
+		FImage CroppedImage;
+		CroppedImage.Init(CropRect.Width(), CropRect.Height(), ERawImageFormat::BGRA8, SourceImage.GammaSpace);
+
+		const TArrayView64<const FColor> SourcePixels = SourceImage.AsBGRA8();
+		TArrayView64<FColor> CroppedPixels = CroppedImage.AsBGRA8();
+
+		for (int32 Y = 0; Y < CropRect.Height(); ++Y)
+		{
+			const int64 SourceIndex = static_cast<int64>(CropRect.Min.Y + Y) * SourceImage.SizeX + CropRect.Min.X;
+			const int64 DestIndex = static_cast<int64>(Y) * CropRect.Width();
+			FMemory::Memcpy(&CroppedPixels[DestIndex], &SourcePixels[SourceIndex], sizeof(FColor) * CropRect.Width());
+		}
+
+		TUniquePtr<FArchive> Archive(IFileManager::Get().CreateFileWriter(*OutputPath));
+		if (!Archive)
+		{
+			OutError = TEXT("Failed to create focused preview output file.");
+			return false;
+		}
+
+		TArray64<uint8> CompressedData;
+		if (!FImageUtils::CompressImage(CompressedData, TEXT("PNG"), CroppedImage))
+		{
+			OutError = TEXT("Failed to encode focused preview PNG.");
+			return false;
+		}
+
+		Archive->Serialize(CompressedData.GetData(), CompressedData.GetAllocatedSize());
+		return true;
+	}
+}
+
+FWidgetPreviewResult UWidgetService::CapturePreviewInternal(
 	const FString& WidgetPath,
 	int32 Width,
-	int32 Height)
+	int32 Height,
+	int32 Padding)
 {
 	FWidgetPreviewResult Result;
 	Result.Width = Width;
@@ -2583,15 +2701,26 @@ FWidgetPreviewResult UWidgetService::CapturePreview(
 	}
 
 	TSharedRef<SWidget> SlateWidget = WidgetInstance->TakeWidget();
-	UTextureRenderTarget2D* RenderTarget = FWidgetRenderer::CreateTargetFor(FVector2D(Width, Height), TF_Bilinear, true);
+	WidgetInstance->ForceLayoutPrepass();
+	SlateWidget->SlatePrepass(1.0f);
+
+	UTextureRenderTarget2D* RenderTarget = NewObject<UTextureRenderTarget2D>();
 	if (!RenderTarget)
 	{
 		Result.ErrorMessage = TEXT("Failed to create preview render target.");
 		return Result;
 	}
 
-	FWidgetRenderer* WidgetRenderer = new FWidgetRenderer(true);
-	WidgetRenderer->SetIsPrepassNeeded(false);
+	RenderTarget->Filter = TF_Bilinear;
+	RenderTarget->ClearColor = FLinearColor::Transparent;
+	RenderTarget->SRGB = true;
+	RenderTarget->RenderTargetFormat = RTF_RGBA8;
+	const EPixelFormat RequestedFormat = FSlateApplication::Get().GetRenderer()->GetSlateRecommendedColorFormat();
+	RenderTarget->InitCustomFormat(Width, Height, RequestedFormat, false);
+	RenderTarget->UpdateResourceImmediate(true);
+
+	FWidgetRenderer* WidgetRenderer = new FWidgetRenderer(false);
+	WidgetRenderer->SetIsPrepassNeeded(true);
 	WidgetRenderer->DrawWidget(RenderTarget, SlateWidget, FVector2D(Width, Height), 0.0f);
 	BeginCleanup(WidgetRenderer);
 
@@ -2615,6 +2744,64 @@ FWidgetPreviewResult UWidgetService::CapturePreview(
 	Archive.Reset();
 	Result.bSuccess = true;
 	Result.OutputPath = OutputPath;
+
+	FImage PreviewImage;
+	FString FocusedError;
+	if (ReadRenderTargetAsBGRA8(RenderTarget, PreviewImage, FocusedError))
+	{
+		FIntRect ContentRect;
+		if (FindVisibleContentRect(PreviewImage, ContentRect))
+		{
+			const FIntRect CropRect = ExpandAndClampRect(ContentRect, PreviewImage.SizeX, PreviewImage.SizeY, Padding);
+			const FString FocusedOutputPath = FPaths::Combine(OutputDir, WidgetBP->GetName() + TEXT(".focused.png"));
+			if (SaveCroppedBGRA8PNG(PreviewImage, CropRect, FocusedOutputPath, FocusedError))
+			{
+				Result.FocusedOutputPath = FocusedOutputPath;
+				Result.ContentX = CropRect.Min.X;
+				Result.ContentY = CropRect.Min.Y;
+				Result.ContentWidth = CropRect.Width();
+				Result.ContentHeight = CropRect.Height();
+			}
+		}
+		else
+		{
+			FocusedError = TEXT("No visible non-transparent content found in preview.");
+		}
+	}
+
+	return Result;
+}
+
+FWidgetPreviewResult UWidgetService::CapturePreview(
+	const FString& WidgetPath,
+	int32 Width,
+	int32 Height)
+{
+	return CapturePreviewInternal(WidgetPath, Width, Height, 0);
+}
+
+FWidgetPreviewResult UWidgetService::CapturePreviewFocused(
+	const FString& WidgetPath,
+	int32 Width,
+	int32 Height,
+	int32 Padding)
+{
+	FWidgetPreviewResult Result = CapturePreviewInternal(WidgetPath, Width, Height, Padding);
+	if (!Result.bSuccess)
+	{
+		return Result;
+	}
+
+	if (Result.FocusedOutputPath.IsEmpty())
+	{
+		Result.bSuccess = false;
+		Result.ErrorMessage = TEXT("Focused preview crop was not generated.");
+		return Result;
+	}
+
+	Result.OutputPath = Result.FocusedOutputPath;
+	Result.Width = Result.ContentWidth;
+	Result.Height = Result.ContentHeight;
 	return Result;
 }
 
