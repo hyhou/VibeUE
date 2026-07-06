@@ -395,10 +395,25 @@ struct FWidgetPreviewResult
 	FString OutputPath;
 
 	UPROPERTY(BlueprintReadWrite, Category = "Widget|Preview")
+	FString FocusedOutputPath;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Widget|Preview")
 	int32 Width = 0;
 
 	UPROPERTY(BlueprintReadWrite, Category = "Widget|Preview")
 	int32 Height = 0;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Widget|Preview")
+	int32 ContentX = 0;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Widget|Preview")
+	int32 ContentY = 0;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Widget|Preview")
+	int32 ContentWidth = 0;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Widget|Preview")
+	int32 ContentHeight = 0;
 
 	UPROPERTY(BlueprintReadWrite, Category = "Widget|Preview")
 	FString ErrorMessage;
@@ -841,6 +856,17 @@ public:
 		int32 Width = 1920,
 		int32 Height = 1080);
 
+	/**
+	 * Capture an off-screen preview and return a tight crop around visible content.
+	 * Maps to action="capture_preview_focused"
+	 */
+	UFUNCTION(BlueprintCallable, Category = "VibeUE|Widgets|Preview")
+	static FWidgetPreviewResult CapturePreviewFocused(
+		const FString& WidgetPath,
+		int32 Width = 1920,
+		int32 Height = 1080,
+		int32 Padding = 0);
+
 	// =================================================================
 	// PIE Widget Lifecycle
 	// =================================================================
@@ -1085,6 +1111,13 @@ private:
 
 	/** Helper to load and validate a Widget Blueprint */
 	static class UWidgetBlueprint* LoadWidgetBlueprint(const FString& WidgetPath);
+
+	/** Helper to render a widget preview and optionally emit a focused crop */
+	static FWidgetPreviewResult CapturePreviewInternal(
+		const FString& WidgetPath,
+		int32 Width,
+		int32 Height,
+		int32 Padding);
 	
 	/** Helper to find a widget component by name */
 	static class UWidget* FindWidgetByName(class UWidgetBlueprint* WidgetBP, const FString& ComponentName);
