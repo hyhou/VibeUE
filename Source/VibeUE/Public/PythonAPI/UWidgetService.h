@@ -860,7 +860,7 @@ public:
 	 * Capture an off-screen preview and return a tight crop around visible content.
 	 * Maps to action="capture_preview_focused"
 	 */
-	UFUNCTION(BlueprintCallable, Category = "VibeUE|Widgets|Preview")
+	UFUNCTION(BlueprintCallable, meta = (AICallable), Category = "VibeUE|Widgets|Preview")
 	static FWidgetPreviewResult CapturePreviewFocused(
 		const FString& WidgetPath,
 		int32 Width = 1920,
@@ -1123,7 +1123,7 @@ public:
 	 * @return True if the slot was found and at least one field applied
 	 */
 	UFUNCTION(BlueprintCallable, Category = "VibeUE|Widgets|Layout",
-		meta = (DisplayName = "Set Slot Info"))
+		meta = (AICallable, DisplayName = "Set Slot Info"))
 	static bool SetSlotInfo(const FString& WidgetPath, const FString& ComponentName,
 	                        const FWidgetSlotInfo& SlotInfo);
 

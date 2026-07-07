@@ -70,7 +70,7 @@ if (-not $enginePath) {
     } catch {}
 }
 
-# Third try: well-known path pattern (e.g. UE_5.7)
+# Third try: well-known path pattern (e.g. UE_5.8)
 if (-not $enginePath) {
     $candidates = @(
         "E:\Program Files\Epic Games\UE_$engineAssociation",
