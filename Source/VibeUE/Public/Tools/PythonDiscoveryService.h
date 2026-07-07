@@ -163,7 +163,7 @@ private:
 	/**
 	 * Get the UE Python plugin source root path
 	 *
-	 * @return Absolute path to Python plugin source (e.g., "E:/Program Files/Epic Games/UE_5.7/Engine/Plugins/Experimental/PythonScriptPlugin")
+	 * @return Absolute path to Python plugin source (e.g., "E:/Program Files/Epic Games/UE_5.8/Engine/Plugins/Experimental/PythonScriptPlugin")
 	 */
 	FString GetPluginSourceRoot() const;
 
