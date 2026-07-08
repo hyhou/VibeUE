@@ -8,7 +8,7 @@ REM   2. Standalone execution - builds as generic plugin
 REM   3. Multiple .uproject files - prompts user to choose
 REM
 REM Optional Parameters:
-REM   %1 - Full path to Unreal Engine installation (e.g., "C:\Program Files\Epic Games\UE_5.7")
+REM   %1 - Full path to Unreal Engine installation (e.g., "C:\Program Files\Epic Games\UE_5.8")
 REM        If provided, skips automatic UE path detection
 REM
 REM Uses project-specific build when possible for maximum compatibility
@@ -61,9 +61,9 @@ echo Found plugin: %PLUGIN_NAME%
 REM Search for Unreal Engine installation using registry (standard method)
 echo Searching for Unreal Engine installation...
 
-REM Supported engine versions, newest first (VibeUE currently targets 5.8;
-REM older versions are kept as fallback for branches/forks still on them).
-set "UE_VERSIONS=5.8 5.7 5.6 5.5 5.4 5.3"
+REM Supported engine versions for this branch. VibeUE depends on UE 5.8 native
+REM ModelContextProtocol and ToolsetRegistry modules, so do not fall back to older engines.
+set "UE_VERSIONS=5.8"
 
 echo Checking common Unreal Engine installation paths...
 for %%V in (%UE_VERSIONS%) do (
@@ -102,7 +102,7 @@ for %%V in (%UE_VERSIONS%) do (
 )
 
 echo ERROR: Could not find Unreal Engine installation.
-echo Please ensure Unreal Engine 5.3+ is installed via Epic Games Launcher.
+echo Please ensure Unreal Engine 5.8+ is installed via Epic Games Launcher.
 echo.
 echo Checked:
 echo   - Common installation paths for versions: %UE_VERSIONS%
