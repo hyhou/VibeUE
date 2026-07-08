@@ -68,6 +68,7 @@
 #include "Blueprint/WidgetBlueprintLibrary.h"
 #include "Channels/MovieSceneChannelTraits.h"
 #include "Editor.h"
+#include "Subsystems/AssetEditorSubsystem.h"
 #include "Editor/EditorEngine.h"
 #include "Engine/Texture2D.h"
 #include "Engine/TextureRenderTarget2D.h"
@@ -1718,6 +1719,102 @@ FWidgetRemoveComponentResult UWidgetService::RemoveComponent(
 	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(WidgetBP);
 
 	Result.bSuccess = true;
+	return Result;
+}
+
+FWidgetPromoteRootResult UWidgetService::PromoteChildToRoot(
+	const FString& WidgetPath,
+	const FString& ChildName)
+{
+	FWidgetPromoteRootResult Result;
+
+	UWidgetBlueprint* WidgetBP = LoadWidgetBlueprint(WidgetPath);
+	if (!WidgetBP)
+	{
+		Result.ErrorMessage = FString::Printf(TEXT("Widget Blueprint '%s' not found"), *WidgetPath);
+		return Result;
+	}
+
+	if (!WidgetBP->WidgetTree || !WidgetBP->WidgetTree->RootWidget)
+	{
+		Result.ErrorMessage = TEXT("Widget Blueprint has no WidgetTree or root widget");
+		return Result;
+	}
+
+	UWidget* OldRoot = WidgetBP->WidgetTree->RootWidget;
+	UPanelWidget* OldRootPanel = Cast<UPanelWidget>(OldRoot);
+	if (!OldRootPanel)
+	{
+		Result.ErrorMessage = FString::Printf(TEXT("Current root '%s' is not a panel widget; nothing to promote from"), *OldRoot->GetName());
+		return Result;
+	}
+
+	UWidget* NewRoot = FindWidgetByName(WidgetBP, ChildName);
+	if (!NewRoot)
+	{
+		Result.ErrorMessage = FString::Printf(TEXT("Widget component '%s' not found"), *ChildName);
+		return Result;
+	}
+
+	if (NewRoot->GetParent() != OldRootPanel)
+	{
+		Result.ErrorMessage = FString::Printf(TEXT("'%s' is not a direct child of the current root '%s'"), *ChildName, *OldRoot->GetName());
+		return Result;
+	}
+
+	// No silent orphaning: the promoted child must be the old root's only child.
+	if (OldRootPanel->GetChildrenCount() != 1)
+	{
+		TArray<FString> Siblings;
+		for (int32 i = 0; i < OldRootPanel->GetChildrenCount(); ++i)
+		{
+			if (UWidget* Child = OldRootPanel->GetChildAt(i))
+			{
+				if (Child != NewRoot)
+				{
+					Siblings.Add(Child->GetName());
+				}
+			}
+		}
+		Result.ErrorMessage = FString::Printf(
+			TEXT("Old root '%s' has other children besides '%s' (%s); move or remove them first"),
+			*OldRoot->GetName(), *ChildName, *FString::Join(Siblings, TEXT(", ")));
+		return Result;
+	}
+
+	// Crash guard: an open Designer tab holds live references to the old root's
+	// Slate widgets; mutating the root underneath it desyncs the preview and can
+	// crash on the next interaction. Close any open editors for this asset first.
+	if (GEditor)
+	{
+		if (UAssetEditorSubsystem* AssetEditorSubsystem = GEditor->GetEditorSubsystem<UAssetEditorSubsystem>())
+		{
+			AssetEditorSubsystem->CloseAllEditorsForAsset(WidgetBP);
+		}
+	}
+
+	// Transaction safety on every touched object (mirrors the engine paste path:
+	// WidgetBlueprintEditorUtils.cpp — Modify + RootWidget assignment).
+	WidgetBP->SetFlags(RF_Transactional);
+	WidgetBP->Modify();
+	WidgetBP->WidgetTree->SetFlags(RF_Transactional);
+	WidgetBP->WidgetTree->Modify();
+	OldRoot->SetFlags(RF_Transactional);
+	OldRoot->Modify();
+	NewRoot->SetFlags(RF_Transactional);
+	NewRoot->Modify();
+
+	// Detach the child from the old root, promote it, then drop the old root.
+	OldRootPanel->RemoveChild(NewRoot);
+	WidgetBP->WidgetTree->RootWidget = NewRoot;
+	WidgetBP->WidgetTree->RemoveWidget(OldRoot);
+
+	// Structural change: regenerates variables so the old root's member var goes away.
+	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(WidgetBP);
+
+	Result.bSuccess = true;
+	Result.NewRootName = NewRoot->GetName();
+	Result.RemovedOldRootName = OldRoot->GetName();
 	return Result;
 }
 
