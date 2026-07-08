@@ -234,6 +234,27 @@ struct FWidgetRemoveComponentResult
 };
 
 /**
+ * Result of promoting a child widget to root
+ */
+USTRUCT(BlueprintType)
+struct FWidgetPromoteRootResult
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadWrite, Category = "Widget")
+	bool bSuccess = false;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Widget")
+	FString NewRootName;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Widget")
+	FString RemovedOldRootName;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Widget")
+	FString ErrorMessage;
+};
+
+/**
  * Information about a ViewModel registered on a Widget Blueprint
  */
 USTRUCT(BlueprintType)
@@ -625,6 +646,24 @@ public:
 		const FString& WidgetPath,
 		const FString& ComponentName,
 		bool bRemoveChildren = false);
+
+	/**
+	 * Promote a direct child of the current root widget to become the new root,
+	 * removing the old root (mirrors the Designer "Replace With Child" action).
+	 * Safe root replacement: closes any open asset editors for the asset first,
+	 * marks all touched objects transactional/modified, and marks the blueprint
+	 * structurally modified. The old root must have the promoted child as its
+	 * only child (no silent orphaning). Compile and save afterwards.
+	 * Maps to action="promote_child_to_root"
+	 *
+	 * @param WidgetPath - Full path to the Widget Blueprint
+	 * @param ChildName - Name of the direct child of the current root to promote
+	 * @return Result with new root name and removed old root name
+	 */
+	UFUNCTION(BlueprintCallable, meta = (AICallable), Category = "VibeUE|Widgets")
+	static FWidgetPromoteRootResult PromoteChildToRoot(
+		const FString& WidgetPath,
+		const FString& ChildName);
 
 	/**
 	 * Rename a widget component in the Widget Blueprint.
