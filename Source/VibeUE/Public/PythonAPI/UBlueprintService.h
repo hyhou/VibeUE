@@ -867,6 +867,50 @@ struct FBlueprintCompileResult
 };
 
 /**
+ * Result of SaveAndCompileBlueprint. Saves a dirty package *before* compiling — direct
+ * template-property writes (e.g. via set_property) are only visible to the compiler once
+ * persisted, so compiling without saving first silently resets them — then compiles, and
+ * optionally saves again afterward to persist the compiled state.
+ */
+USTRUCT(BlueprintType)
+struct FBlueprintSaveCompileResult
+{
+	GENERATED_BODY()
+
+	/** True if compiled with 0 errors and every save this call attempted succeeded. */
+	UPROPERTY(BlueprintReadWrite, Category = "Blueprint")
+	bool bSuccess = false;
+
+	/** True if the package was dirty and was saved before compiling. */
+	UPROPERTY(BlueprintReadWrite, Category = "Blueprint")
+	bool bSavedBeforeCompile = false;
+
+	/** True if FKismetEditorUtilities::CompileBlueprint ran (false only on early-out: PIE active or blueprint not found). */
+	UPROPERTY(BlueprintReadWrite, Category = "Blueprint")
+	bool bCompiled = false;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Blueprint")
+	int32 NumErrors = 0;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Blueprint")
+	int32 NumWarnings = 0;
+
+	/** True if the compiled package was saved afterward (only attempted when bSaveAfterCompile). */
+	UPROPERTY(BlueprintReadWrite, Category = "Blueprint")
+	bool bSavedAfterCompile = false;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Blueprint")
+	TArray<FString> Errors;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Blueprint")
+	TArray<FString> Warnings;
+
+	/** Human-readable failure reason (PIE active, blueprint not found); empty on success. */
+	UPROPERTY(BlueprintReadWrite, Category = "Blueprint")
+	FString ErrorMessage;
+};
+
+/**
  * Comprehensive blueprint information
  */
 USTRUCT(BlueprintType)
@@ -3089,6 +3133,34 @@ public:
 		const FString& ComponentNameB,
 		FString& OutDifferences
 	);
+
+	// ============================================================================
+	// SAVE & COMPILE
+	// ============================================================================
+
+	/**
+	 * Save a dirty blueprint package (if dirty) before compiling, then compile, then optionally
+	 * save again to persist the compiled state.
+	 *
+	 * Kills the "compile after direct template-property writes without saving first resets the
+	 * edit" pit: BlueprintTools.compile_blueprint has no save guard, so edits made via
+	 * set_property on a template are silently lost on the next compile unless the caller
+	 * remembers to save_asset first. This method always saves-before-compile when needed.
+	 *
+	 * @param BlueprintPath     - Full path to the blueprint (UWidgetBlueprint is also a UBlueprint)
+	 * @param bSaveAfterCompile - If true (default), save again after compiling to persist the result
+	 * @return Result with per-stage success flags and compile errors/warnings (see FBlueprintSaveCompileResult)
+	 *
+	 * Refuses to run while PIE is active (asset saves are blocked during PIE) — ErrorMessage
+	 * explains why; call stop_pie first.
+	 *
+	 * Example:
+	 *   result = unreal.BlueprintService.save_and_compile_blueprint("/Game/UI/WBP_MainMenu")
+	 *   if not result.b_success:
+	 *       print(result.error_message or result.errors)
+	 */
+	UFUNCTION(BlueprintCallable, meta = (AICallable), Category = "VibeUE|Blueprint")
+	static FBlueprintSaveCompileResult SaveAndCompileBlueprint(const FString& BlueprintPath, bool bSaveAfterCompile = true);
 
 	// ============================================================================
 	// EXISTENCE CHECKS - Fast boolean checks before creation (Idempotency)

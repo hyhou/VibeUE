@@ -84,6 +84,9 @@
 #include "Serialization/JsonWriter.h"
 #include "Serialization/JsonSerializer.h"
 #include "Policies/CondensedJsonPrintPolicy.h"
+#include "Utils/AssetExistence.h"            // For VibeUEAssetExistence::AssetExists (PIE-safe)
+#include "Editor.h"                          // For GEditor->PlayWorld (SaveAndCompileBlueprint PIE guard)
+#include "FileHelpers.h"                     // For UEditorLoadingAndSavingUtils::SavePackages (headless save)
 
 namespace
 {
@@ -7222,6 +7225,98 @@ FString UBlueprintService::CreateNodeByKey(
 }
 
 // ============================================================================
+// SAVE & COMPILE
+// ============================================================================
+
+FBlueprintSaveCompileResult UBlueprintService::SaveAndCompileBlueprint(const FString& BlueprintPath, bool bSaveAfterCompile)
+{
+	FBlueprintSaveCompileResult Result;
+
+	if (GEditor && (GEditor->PlayWorld || GEditor->bIsSimulatingInEditor))
+	{
+		Result.ErrorMessage = TEXT("PIE is active — stop PIE before compile/save (asset saves are blocked during PIE)");
+		UE_LOG(LogTemp, Warning, TEXT("UBlueprintService::SaveAndCompileBlueprint: %s"), *Result.ErrorMessage);
+		return Result;
+	}
+
+	UBlueprint* Blueprint = LoadBlueprint(BlueprintPath);
+	if (!Blueprint)
+	{
+		Result.ErrorMessage = FString::Printf(TEXT("Blueprint not found: %s"), *BlueprintPath);
+		UE_LOG(LogTemp, Warning, TEXT("UBlueprintService::SaveAndCompileBlueprint: %s"), *Result.ErrorMessage);
+		return Result;
+	}
+
+	// Save first: a compile without persisting direct template-property writes first resets
+	// those edits (the pit this method exists to kill). Headless save — no dialog, no thumbnail
+	// prepass — same as the auto-save path in PythonTools.cpp.
+	bool bPreSaveOk = true;
+	UPackage* Package = Blueprint->GetOutermost();
+	if (Package && Package->IsDirty())
+	{
+		bPreSaveOk = UEditorLoadingAndSavingUtils::SavePackages({ Package }, /*bOnlyDirty=*/false);
+		Result.bSavedBeforeCompile = bPreSaveOk;
+		if (!bPreSaveOk)
+		{
+			// Compiling now would reset the unsaved template-property edits this guard exists
+			// to protect — refuse instead of proceeding.
+			Result.ErrorMessage = FString::Printf(TEXT("Pre-compile save failed for '%s' — compile aborted (compiling would reset the unsaved template edits)"), *BlueprintPath);
+			UE_LOG(LogTemp, Warning, TEXT("UBlueprintService::SaveAndCompileBlueprint: %s"), *Result.ErrorMessage);
+			return Result;
+		}
+	}
+
+	FCompilerResultsLog CompileResults;
+	CompileResults.bSilentMode = false;
+	CompileResults.bLogInfoOnly = false;
+	FKismetEditorUtilities::CompileBlueprint(Blueprint, EBlueprintCompileOptions::None, &CompileResults);
+
+	Result.bCompiled = true;
+	Result.NumErrors = CompileResults.NumErrors;
+	Result.NumWarnings = CompileResults.NumWarnings;
+
+	for (const TSharedRef<FTokenizedMessage>& Msg : CompileResults.Messages)
+	{
+		const FString MsgText = Msg->ToText().ToString();
+		if (Msg->GetSeverity() == EMessageSeverity::Error)
+		{
+			Result.Errors.Add(MsgText);
+		}
+		else if (Msg->GetSeverity() == EMessageSeverity::Warning || Msg->GetSeverity() == EMessageSeverity::PerformanceWarning)
+		{
+			Result.Warnings.Add(MsgText);
+		}
+	}
+
+	bool bPostSaveOk = true;
+	if (bSaveAfterCompile)
+	{
+		Package = Blueprint->GetOutermost();
+		if (Package && Package->IsDirty())
+		{
+			bPostSaveOk = UEditorLoadingAndSavingUtils::SavePackages({ Package }, /*bOnlyDirty=*/false);
+			Result.bSavedAfterCompile = bPostSaveOk;
+		}
+		else
+		{
+			// Nothing left dirty to persist is not a failure.
+			Result.bSavedAfterCompile = true;
+		}
+	}
+
+	Result.bSuccess = Result.bCompiled && Result.NumErrors == 0 && bPreSaveOk && bPostSaveOk;
+
+	UE_LOG(LogTemp, Log, TEXT("UBlueprintService::SaveAndCompileBlueprint: '%s' -> success=%s (errors=%d, warnings=%d, savedBefore=%s, savedAfter=%s)"),
+		*BlueprintPath,
+		Result.bSuccess ? TEXT("true") : TEXT("false"),
+		Result.NumErrors, Result.NumWarnings,
+		Result.bSavedBeforeCompile ? TEXT("true") : TEXT("false"),
+		Result.bSavedAfterCompile ? TEXT("true") : TEXT("false"));
+
+	return Result;
+}
+
+// ============================================================================
 // EXISTENCE CHECKS - Fast boolean checks before creation (Idempotency)
 // ============================================================================
 
@@ -7232,8 +7327,9 @@ bool UBlueprintService::BlueprintExists(const FString& BlueprintPath)
 		return false;
 	}
 
-	// Fast path: use DoesAssetExist which doesn't load the asset
-	return UEditorAssetLibrary::DoesAssetExist(BlueprintPath);
+	// UEditorAssetLibrary::DoesAssetExist is gated by CheckIfInEditorAndPIE and returns False
+	// for every asset while PIE is running — route through the PIE-safe primitive instead.
+	return VibeUEAssetExistence::AssetExists(BlueprintPath);
 }
 
 bool UBlueprintService::VariableExists(const FString& BlueprintPath, const FString& VariableName)

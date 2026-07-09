@@ -21,6 +21,7 @@
 #include "Misc/PackageName.h"
 #include "Engine/Texture.h"
 #include "StaticParameterSet.h"
+#include "Utils/AssetExistence.h"
 
 // =================================================================
 // Helper Methods
@@ -917,7 +918,9 @@ bool UMaterialService::MaterialExists(const FString& MaterialPath)
 	{
 		return false;
 	}
-	return UEditorAssetLibrary::DoesAssetExist(MaterialPath);
+	// UEditorAssetLibrary::DoesAssetExist is gated by CheckIfInEditorAndPIE and returns False
+	// for every asset while PIE is running — route through the PIE-safe primitive instead.
+	return VibeUEAssetExistence::AssetExists(MaterialPath);
 }
 
 bool UMaterialService::MaterialInstanceExists(const FString& InstancePath)
@@ -926,7 +929,7 @@ bool UMaterialService::MaterialInstanceExists(const FString& InstancePath)
 	{
 		return false;
 	}
-	return UEditorAssetLibrary::DoesAssetExist(InstancePath);
+	return VibeUEAssetExistence::AssetExists(InstancePath);
 }
 
 bool UMaterialService::ParameterExists(const FString& MaterialPath, const FString& ParameterName)

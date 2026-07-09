@@ -14,6 +14,7 @@
 #include "InputModifiers.h"
 #include "InputTriggers.h"
 #include "EnhancedInputDeveloperSettings.h"
+#include "Utils/AssetExistence.h"
 
 // =================================================================
 // Helper Methods
@@ -809,7 +810,9 @@ bool UInputService::InputActionExists(const FString& ActionPath)
 	{
 		return false;
 	}
-	return UEditorAssetLibrary::DoesAssetExist(ActionPath);
+	// UEditorAssetLibrary::DoesAssetExist is gated by CheckIfInEditorAndPIE and returns False
+	// for every asset while PIE is running — route through the PIE-safe primitive instead.
+	return VibeUEAssetExistence::AssetExists(ActionPath);
 }
 
 bool UInputService::MappingContextExists(const FString& ContextPath)
@@ -818,7 +821,7 @@ bool UInputService::MappingContextExists(const FString& ContextPath)
 	{
 		return false;
 	}
-	return UEditorAssetLibrary::DoesAssetExist(ContextPath);
+	return VibeUEAssetExistence::AssetExists(ContextPath);
 }
 
 bool UInputService::KeyMappingExists(const FString& ContextPath, const FString& ActionPath)

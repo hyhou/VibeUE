@@ -245,6 +245,8 @@ loader that exposes this skill; there is no `vibeue-skills-manager` tool):
 
 1. After hierarchy edits: re-read with `get_widget_snapshot(path)` and confirm the expected widgets/parents.
 2. After property/style edits: read the value back (`get_property` / `get_font` / `get_brush`).
-3. Open/compile the WBP and confirm no errors, then `unreal.EditorAssetLibrary.save_asset(path)`.
+3. `unreal.BlueprintService.save_and_compile_blueprint(path)` — saves the dirty package BEFORE
+   compiling (an unguarded compile resets unsaved template-property edits), then compiles and
+   persists; check `num_errors == 0`. Don't hand-order `save_asset`/`compile_blueprint` yourself.
 
 Never report a widget as created/configured until it appears in a fresh `get_widget_snapshot` result.
