@@ -8,6 +8,47 @@
 #include "UAssetDiscoveryService.generated.h"
 
 /**
+ * Result of a PIE-safe, multi-signal asset existence check. See UAssetDiscoveryService::AssetExists.
+ */
+USTRUCT(BlueprintType)
+struct FVibeUEAssetExistsResult
+{
+	GENERATED_BODY()
+
+	/** True if any signal below hit. */
+	UPROPERTY(BlueprintReadWrite, Category = "VibeUE|Assets")
+	bool bExists = false;
+
+	/** True if IAssetRegistry::GetAssetByObjectPath found an entry. */
+	UPROPERTY(BlueprintReadWrite, Category = "VibeUE|Assets")
+	bool bInAssetRegistry = false;
+
+	/** True if the object (or its package) is already loaded in memory. */
+	UPROPERTY(BlueprintReadWrite, Category = "VibeUE|Assets")
+	bool bInMemory = false;
+
+	/** True if FPackageName::DoesPackageExist found a package file on disk. */
+	UPROPERTY(BlueprintReadWrite, Category = "VibeUE|Assets")
+	bool bOnDisk = false;
+
+	/** True if the AssetRegistry is still doing its initial scan — false negatives possible. */
+	UPROPERTY(BlueprintReadWrite, Category = "VibeUE|Assets")
+	bool bRegistryScanning = false;
+
+	/** True if PIE is currently running (diagnostic context; all signals above still apply). */
+	UPROPERTY(BlueprintReadWrite, Category = "VibeUE|Assets")
+	bool bPIEActive = false;
+
+	/** Asset class name, populated when bInAssetRegistry is true. */
+	UPROPERTY(BlueprintReadWrite, Category = "VibeUE|Assets")
+	FString AssetClassName;
+
+	/** The normalized full object path that was checked. */
+	UPROPERTY(BlueprintReadWrite, Category = "VibeUE|Assets")
+	FString ResolvedObjectPath;
+};
+
+/**
  * Asset discovery service exposed directly to Python.
  *
  * This service provides asset search and discovery functionality with native
@@ -28,6 +69,15 @@
  *   asset_data = unreal.AssetDiscoveryService.find_asset_by_path("/Game/MyAsset")
  *   if asset_data:
  *       print(f"Found: {asset_data.asset_name}")
+ *
+ *   # Check if an asset exists — PIE-safe, unlike unreal.EditorAssetLibrary.does_asset_exist
+ *   # (which returns False for every asset while PIE is running)
+ *   result = unreal.AssetDiscoveryService.asset_exists("/Game/UI/HUD/WBP_NBGameUI")
+ *   if result.b_exists:
+ *       print(result.asset_class_name)
+ *
+ *   # Get referencers of an asset (on-disk references only)
+ *   refs = unreal.AssetDiscoveryService.get_referencers("/Game/UI/Widgets/WBP_MiniMap")
  *
  * @note All methods are static and thread-safe
  * @note This replaces the JSON-based manage_asset MCP tool
@@ -126,6 +176,48 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, meta = (AICallable), Category = "VibeUE|Assets|Editor")
 	static bool IsAssetOpen(const FString& AssetPath);
+
+	// ========== Existence & References ==========
+
+	/**
+	 * PIE-safe, multi-signal check for whether an asset exists.
+	 *
+	 * unreal.EditorAssetLibrary.does_asset_exist() (and any VibeUE tool that used to delegate to
+	 * it) is gated by CheckIfInEditorAndPIE and returns False for every asset while PIE is
+	 * running. This composes AssetRegistry / in-memory / on-disk signals directly, all of which
+	 * work correctly during PIE.
+	 *
+	 * Returns the result struct by value — NOT a bool + out-param. UE's Python bridge turns
+	 * "bool + out-param" functions into optional returns that yield None on the false path,
+	 * which would make the not-found case (the one that needs the diagnostic signals most)
+	 * unreadable without an is-None guard.
+	 *
+	 * @param AssetPath - package path ("/Game/Pkg/Name") or object path ("/Game/Pkg/Name.Name")
+	 * @return Populated existence signals; bExists false (with signals) when not found
+	 *
+	 * Python:
+	 *   result = unreal.AssetDiscoveryService.asset_exists("/Game/UI/HUD/WBP_NBGameUI")
+	 *   if result.b_exists:
+	 *       print(result.asset_class_name)
+	 *   elif result.b_registry_scanning:
+	 *       print("registry still scanning - possible false negative, retry")
+	 */
+	UFUNCTION(BlueprintCallable, meta = (AICallable), Category = "VibeUE|Assets")
+	static FVibeUEAssetExistsResult AssetExists(const FString& AssetPath);
+
+	/**
+	 * Get all packages that reference the given asset (on-disk references only).
+	 *
+	 * @param AssetPath    - package path or object path (normalized internally)
+	 * @param bIncludeHard - include hard (load-required) package references
+	 * @param bIncludeSoft - include soft (not-required-to-load) package references
+	 * @return Array of referencer package names; empty (not an error) if the asset has no referencers or doesn't exist
+	 *
+	 * Example:
+	 *   refs = unreal.AssetDiscoveryService.get_referencers("/Game/UI/Widgets/WBP_MiniMap")
+	 */
+	UFUNCTION(BlueprintCallable, meta = (AICallable), Category = "VibeUE|Assets")
+	static TArray<FString> GetReferencers(const FString& AssetPath, bool bIncludeHard = true, bool bIncludeSoft = true);
 
 private:
 	/** Helper: get all assets currently selected in the Content Browser. */

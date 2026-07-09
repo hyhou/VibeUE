@@ -28,10 +28,15 @@ unreal_classes:
 > | `get_primary_content_browser_selection()` → `AssetData or None` | Primary Content Browser selection |
 > | `is_asset_open(asset_path)` → `bool` | Whether an asset is open in an editor |
 >
+> | `asset_exists(path)` → `AssetExistsResult` | **PIE-safe** existence check (registry + memory + disk signals; `EditorAssetLibrary.does_asset_exist` returns False for everything while PIE runs). Always returns a struct — check `.exists` |
+> | `get_referencers(path, include_hard=True, include_soft=True)` → `[str]` | Referencer packages without hand-building `AssetRegistryDependencyOptions` |
+>
 > Everything else below (`search_assets`, `list_assets_in_path`, `move_asset`, `duplicate_asset`,
-> `delete_asset`, `save_asset`, `get_open_assets`, `get_asset_referencers`, `find_asset_by_path`,
-> `asset_exists`, …) was **removed** from `AssetDiscoveryService` — use the engine `AssetTools`
-> toolset or `EditorAssetLibrary` / the Asset Registry.
+> `delete_asset`, `save_asset`, `get_open_assets`, `find_asset_by_path`, …) was **removed** from
+> `AssetDiscoveryService` — use the engine `AssetTools` toolset or `EditorAssetLibrary` / the
+> Asset Registry. ⚠️ `EditorAssetLibrary` calls (exists/load/save) are engine-gated by
+> `CheckIfInEditorAndPIE()` and fail wholesale while PIE is active — for existence use
+> `asset_exists` above; for Blueprint compile+save use `BlueprintService.save_and_compile_blueprint`.
 
 ## Data Assets & Data Tables — no dedicated VibeUE service (issues #451, #452)
 
@@ -84,10 +89,10 @@ if asset:
 | Operation | Use |
 |-----------|-----|
 | Search / find / list assets | engine **`AssetTools`** toolset via `call_tool`, or `unreal.AssetRegistryHelpers.get_asset_registry()` |
-| Load / save / save-all | `unreal.EditorAssetLibrary.load_asset` / `save_asset` / `save_directory`, or `AssetTools` |
+| Load / save / save-all | `unreal.EditorAssetLibrary.load_asset` / `save_asset` / `save_directory`, or `AssetTools` (⚠️ all `EditorAssetLibrary` calls fail wholesale while PIE is active — engine `CheckIfInEditorAndPIE()` gate) |
 | Move / rename / duplicate / delete | `unreal.EditorAssetLibrary.rename_asset` (move), `duplicate_asset`, `delete_asset`, or `AssetTools` |
-| Existence check | `unreal.EditorAssetLibrary.does_asset_exist(path)` |
-| Referencers / dependencies | `unreal.AssetRegistryHelpers.get_asset_registry().get_referencers(...)` |
+| Existence check | `unreal.AssetDiscoveryService.asset_exists(path)` — PIE-safe; do NOT use `EditorAssetLibrary.does_asset_exist` (returns False for everything during PIE) |
+| Referencers | `unreal.AssetDiscoveryService.get_referencers(path)` — no `AssetRegistryDependencyOptions` needed; dependencies direction still via `get_asset_registry().get_dependencies(...)` |
 | Open an asset / list ALL open editors | Epic `EditorAppToolset` via `call_tool` (see below) |
 | Import image from disk (crash-safe) | `unreal.AssetDiscoveryService.import_asset` / `import_texture` (**stay on VibeUE — see below**) |
 | Export a texture to disk | `unreal.AssetDiscoveryService.export_texture` |
@@ -193,10 +198,10 @@ Use `/Game/...` paths, **not** file system paths, everywhere except the disk sid
 
 ```python
 # WRONG - file system path
-unreal.EditorAssetLibrary.does_asset_exist("C:/Projects/Content/BP_Player.uasset")
+unreal.AssetDiscoveryService.asset_exists("C:/Projects/Content/BP_Player.uasset")
 
 # CORRECT - content browser path
-unreal.EditorAssetLibrary.does_asset_exist("/Game/Blueprints/BP_Player")
+unreal.AssetDiscoveryService.asset_exists("/Game/Blueprints/BP_Player")
 ```
 
 ### ⚠️ Never Emulate Move/Rename with Duplicate + Delete
@@ -249,10 +254,14 @@ for a in ar.get_assets(f)[:25]:
 ```python
 import unreal
 
-if unreal.EditorAssetLibrary.does_asset_exist("/Game/BP_Player"):
-    print("Found")
+# PIE-safe (EditorAssetLibrary.does_asset_exist returns False for EVERYTHING while PIE runs)
+detail = unreal.AssetDiscoveryService.asset_exists("/Game/BP_Player")
+if detail.exists:
+    print(f"Found ({detail.asset_class_name})")
 else:
     print("Not found - create it")
+    if detail.registry_scanning:
+        print("  (asset registry still scanning - result may be a false negative, retry)")
 ```
 
 ### Duplicate Pattern

@@ -17,6 +17,7 @@
 #include "Misc/FileHelper.h"
 #include "Factories/TextureFactory.h"
 #include "UObject/Package.h"
+#include "Utils/AssetExistence.h"
 
 // ========== Texture Operations ==========
 
@@ -261,4 +262,81 @@ bool UAssetDiscoveryService::IsAssetOpen(const FString& AssetPath)
 
 	UE_LOG(LogTemp, Log, TEXT("UAssetDiscoveryService::IsAssetOpen: %s is %s"), *AssetPath, bIsOpen ? TEXT("open") : TEXT("closed"));
 	return bIsOpen;
+}
+
+// ========== Existence & References ==========
+
+FVibeUEAssetExistsResult UAssetDiscoveryService::AssetExists(const FString& AssetPath)
+{
+	FVibeUEAssetExistsResult OutResult;
+
+	OutResult.bPIEActive = GEditor && (GEditor->PlayWorld != nullptr || GEditor->bIsSimulatingInEditor);
+
+	IAssetRegistry& AssetRegistry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry")).Get();
+	OutResult.bRegistryScanning = AssetRegistry.IsLoadingAssets();
+
+	if (AssetPath.IsEmpty())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UAssetDiscoveryService::AssetExists: AssetPath is empty"));
+		return OutResult;
+	}
+
+	OutResult.ResolvedObjectPath = VibeUEAssetExistence::NormalizeToObjectPath(AssetPath);
+
+	OutResult.bInAssetRegistry = VibeUEAssetExistence::IsInAssetRegistry(OutResult.ResolvedObjectPath, &OutResult.AssetClassName);
+	OutResult.bInMemory = VibeUEAssetExistence::IsInMemory(OutResult.ResolvedObjectPath);
+	OutResult.bOnDisk = VibeUEAssetExistence::DoesPackageFileExist(OutResult.ResolvedObjectPath);
+	// bInMemory / bOnDisk are raw diagnostic signals; their package-level halves cannot vouch
+	// for an arbitrary object suffix, so the verdict uses the same guarded composition as
+	// VibeUEAssetExistence::AssetExists().
+	OutResult.bExists = OutResult.bInAssetRegistry
+		|| VibeUEAssetExistence::IsObjectInMemory(OutResult.ResolvedObjectPath)
+		|| (VibeUEAssetExistence::HasCanonicalObjectSuffix(OutResult.ResolvedObjectPath)
+			&& (VibeUEAssetExistence::IsPackageInMemory(OutResult.ResolvedObjectPath) || OutResult.bOnDisk));
+
+	UE_LOG(LogTemp, Log, TEXT("UAssetDiscoveryService::AssetExists: '%s' -> exists=%s (registry=%s, memory=%s, disk=%s, pie=%s)"),
+		*AssetPath,
+		OutResult.bExists ? TEXT("true") : TEXT("false"),
+		OutResult.bInAssetRegistry ? TEXT("true") : TEXT("false"),
+		OutResult.bInMemory ? TEXT("true") : TEXT("false"),
+		OutResult.bOnDisk ? TEXT("true") : TEXT("false"),
+		OutResult.bPIEActive ? TEXT("true") : TEXT("false"));
+
+	return OutResult;
+}
+
+TArray<FString> UAssetDiscoveryService::GetReferencers(const FString& AssetPath, bool bIncludeHard, bool bIncludeSoft)
+{
+	TArray<FString> Referencers;
+
+	if (AssetPath.IsEmpty())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UAssetDiscoveryService::GetReferencers: AssetPath is empty"));
+		return Referencers;
+	}
+
+	const FString ObjectPath = VibeUEAssetExistence::NormalizeToObjectPath(AssetPath);
+	FString PackageName = ObjectPath;
+	ObjectPath.Split(TEXT("."), &PackageName, nullptr);
+
+	IAssetRegistry& AssetRegistry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry")).Get();
+
+	FAssetRegistryDependencyOptions Options;
+	Options.bIncludeHardPackageReferences = bIncludeHard;
+	Options.bIncludeSoftPackageReferences = bIncludeSoft;
+	Options.bIncludeSearchableNames = false;
+	Options.bIncludeSoftManagementReferences = false;
+	Options.bIncludeHardManagementReferences = false;
+
+	TArray<FName> ReferencerNames;
+	AssetRegistry.K2_GetReferencers(FName(*PackageName), Options, ReferencerNames);
+
+	Referencers.Reserve(ReferencerNames.Num());
+	for (const FName& ReferencerName : ReferencerNames)
+	{
+		Referencers.Add(ReferencerName.ToString());
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("UAssetDiscoveryService::GetReferencers: '%s' -> %d referencer(s)"), *PackageName, Referencers.Num());
+	return Referencers;
 }

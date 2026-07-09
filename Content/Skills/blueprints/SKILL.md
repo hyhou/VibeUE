@@ -192,11 +192,10 @@ life  = unreal.BlueprintService.get_property(bp, "InitialLifeSpan")  # "5.000000
 # WRITE — values are strings; returns bool
 unreal.BlueprintService.set_property(bp, "bReplicates", "True")
 
-# Compile via the engine BlueprintTools toolset (compile_blueprint was cut from BlueprintService):
-# call_tool(tool_name="compile_blueprint",
-#           toolset_name="editor_toolset.toolsets.blueprint.BlueprintTools",
-#           arguments={"blueprint": {"refPath": "/Game/Blueprints/TestActor.TestActor"}})
-unreal.EditorAssetLibrary.save_asset(bp)
+# Save + compile + persist in one guarded call (saves the dirty set_property edits BEFORE
+# compiling — a raw compile_blueprint resets unsaved template edits):
+res = unreal.BlueprintService.save_and_compile_blueprint(bp)
+assert res.num_errors == 0, list(res.errors)
 ```
 
 Rules:
@@ -314,11 +313,9 @@ unreal.BlueprintService.add_event_dispatcher_parameter(bp, "FinishedLooking", "D
 call_id = unreal.BlueprintService.add_call_delegate_node(bp, "EventGraph", "FinishedLooking", 1400, -700)
 unreal.BlueprintService.connect_nodes(bp, "EventGraph", timeline_id, "Finished", call_id, "execute")
 
-# 4. Compile (engine BlueprintTools toolset) + save
-# call_tool(tool_name="compile_blueprint",
-#           toolset_name="editor_toolset.toolsets.blueprint.BlueprintTools",
-#           arguments={"blueprint": bp})
-unreal.EditorAssetLibrary.save_asset(bp)
+# 4. Save + compile + persist (guarded — see save_and_compile_blueprint)
+res = unreal.BlueprintService.save_and_compile_blueprint(bp)
+assert res.num_errors == 0, list(res.errors)
 ```
 
 **Pins on the Call node:** `execute` (input exec), `then` (output exec), `self` (input target — defaulted to Self), plus one input pin per signature parameter.
@@ -331,7 +328,7 @@ unreal.EditorAssetLibrary.save_asset(bp)
 
 - ❌ `add_variable(bp, "FinishedLooking", "EventDispatcher")` — `"EventDispatcher"` is not a real type string; use `add_event_dispatcher` instead.
 - ❌ Treating the dispatcher like a regular variable (`add_get_variable_node` on it produces a delegate-getter, not a broadcast). The broadcast node is `UK2Node_CallDelegate` and is created only by `add_call_delegate_node`.
-- ❌ Skipping the compile before saving the asset. The skeleton compiles inline on dispatcher creation, but the final asset still needs the engine `BlueprintTools.compile_blueprint` toolset call before `save_asset` to ensure the generated class is up-to-date.
+- ❌ Skipping the compile before saving the asset. The skeleton compiles inline on dispatcher creation, but the final asset still needs a full compile+persist — use `unreal.BlueprintService.save_and_compile_blueprint(bp)` (guarded: saves dirty template edits first, then compiles, then persists).
 
 ### Blueprint Interfaces (implement / remove)
 
@@ -364,7 +361,7 @@ unreal.EditorAssetLibrary.save_asset(bp)
 **Notes & gotchas:**
 
 - **Prefer the full asset path** (e.g. `/Game/Interfaces/BPI_Interactable`). Short-name resolution only finds interface Blueprints that are *already loaded* in the editor; a full path always loads and resolves.
-- Both methods **recompile the Blueprint inline** (`CompileBlueprint`) but do **not** save it — call `EditorAssetLibrary.save_asset(bp)` afterward to persist.
+- Both methods **recompile the Blueprint inline** (`CompileBlueprint`) but do **not** save it — call `unreal.BlueprintService.save_and_compile_blueprint(bp)` afterward to persist (default), or `EditorAssetLibrary.save_asset(bp)` only if you know the package has no other unsaved template edits.
 - `add_interface` is idempotent — calling it for an interface that is already implemented returns `True` without duplicating it.
 - After adding an interface, its functions appear as overridable events/functions; use `override_function(bp_path, function_name)` to implement them in the graph.
 - Both return `bool` (`True` on success). A `False` from `add_interface` means either the interface path could not be resolved, or it resolved to an asset that is **not a Blueprint Interface** (e.g. a normal Blueprint or one merely parented to `UInterface`) — check the log and pass a real Blueprint Interface asset path.
@@ -391,7 +388,9 @@ unreal.EditorAssetLibrary.save_asset(bp)
 
 ## Verification
 
-After any edit: compile via the engine `BlueprintTools.compile_blueprint` toolset call
-(`call_tool(tool_name="compile_blueprint", toolset_name="editor_toolset.toolsets.blueprint.BlueprintTools", arguments={"blueprint": path})`)
-and check the result's `success` / `num_errors`, then `unreal.EditorAssetLibrary.save_asset(path)`.
+After any edit: `unreal.BlueprintService.save_and_compile_blueprint(path)` — it saves a dirty
+package BEFORE compiling (an unguarded compile resets unsaved template-property edits), compiles,
+persists, and returns `num_errors` / `num_warnings` / per-severity messages; it refuses explicitly
+while PIE is active. The raw engine `BlueprintTools.compile_blueprint` toolset call still exists but
+has no save guard — only use it when you know the package is clean.
 Don't claim success until compile reports zero errors.

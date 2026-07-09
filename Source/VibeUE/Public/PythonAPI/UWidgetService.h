@@ -459,9 +459,48 @@ struct FPIEWidgetHandle
 };
 
 /**
+ * Information about a live (or template/CDO) UUserWidget instance found by FindLiveWidgets.
+ */
+USTRUCT(BlueprintType)
+struct FVibeUELiveWidgetInfo
+{
+	GENERATED_BODY()
+
+	/** Full object path of this widget instance (usable with GetLiveWidgetProperty / FindObject). */
+	UPROPERTY(BlueprintReadWrite, Category = "Widget|PIE")
+	FString ObjectPath;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Widget|PIE")
+	FString WidgetName;
+
+	/** Path of the widget's class (native class or Widget Blueprint generated class). */
+	UPROPERTY(BlueprintReadWrite, Category = "Widget|PIE")
+	FString ClassPath;
+
+	/** True if GetWorld() resolves to a PIE or Game world (this is an actual running instance). */
+	UPROPERTY(BlueprintReadWrite, Category = "Widget|PIE")
+	bool bIsLiveInstance = false;
+
+	/** True if this is a CDO/archetype, or lives inside a Widget Blueprint's WidgetTree template. */
+	UPROPERTY(BlueprintReadWrite, Category = "Widget|PIE")
+	bool bIsTemplate = false;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Widget|PIE")
+	bool bIsInViewport = false;
+
+	/** Name of the world this widget belongs to (empty if it has none). */
+	UPROPERTY(BlueprintReadWrite, Category = "Widget|PIE")
+	FString WorldName;
+
+	/** "PIE" / "Game" / "Editor" / "EditorPreview" / "GamePreview" / "GameRPC" / "Inactive" / "None". */
+	UPROPERTY(BlueprintReadWrite, Category = "Widget|PIE")
+	FString WorldType;
+};
+
+/**
  * Widget service exposed directly to Python.
  *
- * Provides 41 widget management actions:
+ * Provides 43 widget management actions:
  * - list_widget_blueprints: List all Widget Blueprints in the project
  * - get_hierarchy: Get widget hierarchy tree
  * - get_root_widget: Get the root widget of a Widget Blueprint
@@ -501,6 +540,8 @@ struct FPIEWidgetHandle
  * - remove_widget_from_pie: Remove a spawned PIE widget instance from the viewport
  * - widget_blueprint_exists: Check if a Widget Blueprint exists
  * - widget_exists: Check if a widget component exists in a Widget Blueprint
+ * - find_live_widgets: Find live (or template) UUserWidget instances of a class, PIE-safe
+ * - get_live_widget_property: Read a property from a live widget instance found by find_live_widgets
  *
  * Python Usage:
  *   import unreal
@@ -957,6 +998,37 @@ public:
 	UFUNCTION(BlueprintCallable, meta = (AICallable), Category = "VibeUE|Widgets|PIE")
 	static bool RemoveWidgetFromPIE(const FPIEWidgetHandle& Handle);
 
+	/**
+	 * Find live (or, with bLiveOnly=false, template/CDO) UUserWidget instances of a class.
+	 * PIE-safe: resolves the class via AssetRegistry/LoadObject, never UEditorAssetLibrary.
+	 * Maps to action="find_live_widgets"
+	 *
+	 * @param WidgetClassOrPath - native widget type name, bare WBP name, WBP package/object path,
+	 *                            or generated-class path (".../WBP_Foo.WBP_Foo_C")
+	 * @param bLiveOnly         - if true (default), only return instances with bIsLiveInstance=true
+	 *                            (templates/CDOs excluded); if false, include everything found
+	 * @return Array of matching widget instances (see FVibeUELiveWidgetInfo)
+	 */
+	UFUNCTION(BlueprintCallable, meta = (AICallable), Category = "VibeUE|Widgets|PIE")
+	static TArray<FVibeUELiveWidgetInfo> FindLiveWidgets(const FString& WidgetClassOrPath, bool bLiveOnly = true);
+
+	/**
+	 * Read a property from a live widget instance found via FindLiveWidgets, by object path.
+	 * Uses C++ reflection (ExportTextItem_Direct) — no script-visibility gate, unlike get_property
+	 * on a script-hidden property. Maps to action="get_live_widget_property"
+	 *
+	 * @param WidgetObjectPath - ObjectPath from a FindLiveWidgets result
+	 * @param PropertyName     - Name of the property to read
+	 * @param ComponentName    - Empty (default) targets the UUserWidget instance itself;
+	 *                           non-empty descends to a named child widget in its WidgetTree
+	 * @return Exported property value as text, or empty string if not found (no crash)
+	 */
+	UFUNCTION(BlueprintCallable, meta = (AICallable), Category = "VibeUE|Widgets|PIE")
+	static FString GetLiveWidgetProperty(
+		const FString& WidgetObjectPath,
+		const FString& PropertyName,
+		const FString& ComponentName = TEXT(""));
+
 	// =================================================================
 	// Event Handling (get_available_events, bind_events)
 	// =================================================================
@@ -1188,6 +1260,15 @@ private:
 	
 	/** Helper to create a widget class from type name */
 	static TSubclassOf<class UWidget> FindWidgetClass(const FString& TypeName);
+
+	/**
+	 * Resolve a UUserWidget subclass for FindLiveWidgets / GetLiveWidgetProperty. PIE-safe:
+	 * never calls LoadWidgetBlueprint (which delegates to UEditorAssetLibrary::LoadAsset and
+	 * returns null while PIE is running). Tries in order: FindWidgetClass (native/WBP name),
+	 * generated-class path ("..._C"), Widget Blueprint package/object path (via LoadObject),
+	 * then a bare class name already loaded in memory.
+	 */
+	static class UClass* ResolveUserWidgetClass(const FString& WidgetClassOrPath);
 
 	/** Helper to find a ViewModel class by name (C++ or Blueprint ViewModel) */
 	static UClass* FindViewModelClass(const FString& ClassName);

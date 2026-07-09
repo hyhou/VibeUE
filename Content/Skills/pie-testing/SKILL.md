@@ -81,6 +81,14 @@ val = unreal.WidgetService.get_live_property(handle, "HealthText", "Text")
 
 # Tear it down before stopping PIE
 unreal.WidgetService.remove_widget_from_pie(handle)
+
+# Locate widget instances the GAME spawned (HUD etc.) — no handle needed:
+# returns live PIE instances only (templates/CDOs filtered), each with object_path/world_type
+hits = unreal.WidgetService.find_live_widgets("WBP_HUD")  # class name, /Game path, or ..._C
+
+# Read any property off a found instance via C++ reflection (no script-visibility gate);
+# empty component name targets the instance itself, or pass a child widget name
+val = unreal.WidgetService.get_live_widget_property(hits[0].object_path, "Visibility")
 ```
 
 `unreal.WidgetService.is_pie_running()` also still exists and is handy from inside Python; for
@@ -91,7 +99,7 @@ tool-level control prefer the engine `EditorAppToolset` actions above.
 - **PIE start is asynchronous.** `StartPIE` returns immediately after `RequestPlaySession` is queued. The world isn't actually playing until the editor processes the request on its next tick. If you need to act inside the running world, give it a tick or poll `IsPIERunning`.
 - **Already-running is treated as success.** `StartPIE` succeeds if a PIE session already exists — it does NOT restart. Stop first if you need a fresh session.
 - **`StopPIE` tears down the world** via `RequestEndPlayMap`. Spawned PIE widget instances should be removed with `WidgetService.remove_widget_from_pie(handle)` before stopping.
-- **Save before starting.** Dirty asset changes are NOT picked up by PIE unless saved/compiled. Always `compile_blueprint(...)` before launching PIE to test Blueprint changes.
+- **Save before starting.** Dirty asset changes are NOT picked up by PIE unless saved/compiled. Always `unreal.BlueprintService.save_and_compile_blueprint(path)` before launching PIE to test Blueprint changes — it saves dirty template edits BEFORE compiling (a raw `compile_blueprint` resets them) and refuses explicitly if PIE is already running.
 - **Don't leave PIE running between tasks.** Subsequent edits (recompiles, asset moves, hot reload) can fail or behave oddly while a PIE world is alive. Call `StopPIE` before returning control to the user.
 
 ## When to use PIE
