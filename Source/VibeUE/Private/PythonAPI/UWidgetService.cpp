@@ -100,6 +100,11 @@
 #include "Types/MVVMFieldVariant.h"
 #include "ViewModel/MVVMViewModelBlueprint.h"
 #include "WidgetBlueprintExtension.h"
+#include "Utils/AssetExistence.h"
+#include "Engine/World.h"
+#include "Engine/EngineTypes.h"
+#include "UObject/UObjectIterator.h"
+#include "UObject/UObjectGlobals.h"
 
 // Static list of available widget types
 static const TArray<FString> GAvailableWidgetTypes = {
@@ -3059,6 +3064,199 @@ bool UWidgetService::RemoveWidgetFromPIE(const FPIEWidgetHandle& Handle)
 	return true;
 }
 
+UClass* UWidgetService::ResolveUserWidgetClass(const FString& WidgetClassOrPath)
+{
+	if (WidgetClassOrPath.IsEmpty())
+	{
+		return nullptr;
+	}
+
+	// (1) Native widget type name, or a custom WBP resolved by name (existing resolver; also
+	// handles compiling a dirty WBP found via the AssetRegistry).
+	if (TSubclassOf<UWidget> Native = FindWidgetClass(WidgetClassOrPath))
+	{
+		if (Native->IsChildOf(UUserWidget::StaticClass()))
+		{
+			return Native.Get();
+		}
+	}
+
+	// (2) Generated-class path, e.g. "/Game/UI/WBP_Foo.WBP_Foo_C" or bare "WBP_Foo_C".
+	if (WidgetClassOrPath.EndsWith(TEXT("_C")))
+	{
+		FString ClassObjectPath = WidgetClassOrPath;
+		if (!ClassObjectPath.Contains(TEXT(".")))
+		{
+			FString ClassName;
+			if (ClassObjectPath.Split(TEXT("/"), nullptr, &ClassName, ESearchCase::IgnoreCase, ESearchDir::FromEnd))
+			{
+				ClassObjectPath = FString::Printf(TEXT("%s.%s"), *ClassObjectPath, *ClassName);
+			}
+		}
+		if (UClass* LoadedClass = LoadObject<UClass>(nullptr, *ClassObjectPath))
+		{
+			if (LoadedClass->IsChildOf(UUserWidget::StaticClass()))
+			{
+				return LoadedClass;
+			}
+		}
+	}
+
+	// (3) Widget Blueprint package/object path. Deliberately uses LoadObject directly instead of
+	// LoadWidgetBlueprint(), which delegates to UEditorAssetLibrary::LoadAsset and returns null
+	// while PIE is running (same fix as SpawnWidgetInPIE above).
+	if (WidgetClassOrPath.StartsWith(TEXT("/")))
+	{
+		FString ObjectPath = WidgetClassOrPath;
+		if (!ObjectPath.Contains(TEXT(".")))
+		{
+			FString AssetName;
+			if (ObjectPath.Split(TEXT("/"), nullptr, &AssetName, ESearchCase::IgnoreCase, ESearchDir::FromEnd))
+			{
+				ObjectPath = FString::Printf(TEXT("%s.%s"), *ObjectPath, *AssetName);
+			}
+		}
+		if (UWidgetBlueprint* WidgetBP = LoadObject<UWidgetBlueprint>(nullptr, *ObjectPath))
+		{
+			if (WidgetBP->GeneratedClass && WidgetBP->GeneratedClass->IsChildOf(UUserWidget::StaticClass()))
+			{
+				return WidgetBP->GeneratedClass;
+			}
+		}
+	}
+
+	// (4) Bare class name already loaded in memory — sufficient for find_live_widgets, since a
+	// widget must already be instantiated (its class necessarily loaded) for the query to matter.
+	if (UClass* FoundClass = FindFirstObject<UClass>(*WidgetClassOrPath))
+	{
+		if (FoundClass->IsChildOf(UUserWidget::StaticClass()))
+		{
+			return FoundClass;
+		}
+	}
+
+	return nullptr;
+}
+
+TArray<FVibeUELiveWidgetInfo> UWidgetService::FindLiveWidgets(const FString& WidgetClassOrPath, bool bLiveOnly)
+{
+	TArray<FVibeUELiveWidgetInfo> Results;
+
+	UClass* ResolvedClass = ResolveUserWidgetClass(WidgetClassOrPath);
+	if (!ResolvedClass)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UWidgetService::FindLiveWidgets: Could not resolve widget class '%s'"), *WidgetClassOrPath);
+		return Results;
+	}
+
+	// TObjectIterator excludes CDOs by default — diagnostic mode (bLiveOnly=false) exists to make
+	// the template/CDO side of the triple-object trap visible, so include them there.
+	const EObjectFlags ExclusionFlags = bLiveOnly ? RF_ClassDefaultObject : RF_NoFlags;
+	for (TObjectIterator<UUserWidget> It(ExclusionFlags); It; ++It)
+	{
+		UUserWidget* Widget = *It;
+		if (!IsValid(Widget) || !Widget->IsA(ResolvedClass))
+		{
+			continue;
+		}
+
+		// Template classification: CDO/archetype flags, OR the CDO of this widget's own class,
+		// OR living inside a Widget Blueprint's WidgetTree (the design-time template instance).
+		bool bIsTemplateWidget = Widget->IsTemplate();
+		if (!bIsTemplateWidget && Widget->GetClass() && Widget->GetClass()->GetDefaultObject(/*bCreateIfNeeded=*/false) == Widget)
+		{
+			bIsTemplateWidget = true;
+		}
+		if (!bIsTemplateWidget)
+		{
+			for (UObject* Outer = Widget->GetOuter(); Outer; Outer = Outer->GetOuter())
+			{
+				if (Outer->IsA<UWidgetTree>())
+				{
+					UObject* TreeOuter = Outer->GetOuter();
+					if (TreeOuter && TreeOuter->IsA<UWidgetBlueprint>())
+					{
+						bIsTemplateWidget = true;
+					}
+					break;
+				}
+			}
+		}
+
+		if (bLiveOnly && bIsTemplateWidget)
+		{
+			continue;
+		}
+
+		UWorld* WidgetWorld = Widget->GetWorld();
+		const bool bIsLiveInstance = WidgetWorld &&
+			(WidgetWorld->WorldType == EWorldType::PIE || WidgetWorld->WorldType == EWorldType::Game);
+
+		if (bLiveOnly && !bIsLiveInstance)
+		{
+			continue;
+		}
+
+		FVibeUELiveWidgetInfo Info;
+		Info.ObjectPath = Widget->GetPathName();
+		Info.WidgetName = Widget->GetName();
+		Info.ClassPath = Widget->GetClass() ? Widget->GetClass()->GetPathName() : FString();
+		Info.bIsLiveInstance = bIsLiveInstance;
+		Info.bIsTemplate = bIsTemplateWidget;
+		Info.bIsInViewport = Widget->IsInViewport();
+		Info.WorldName = WidgetWorld ? WidgetWorld->GetName() : FString();
+		Info.WorldType = WidgetWorld ? LexToString(WidgetWorld->WorldType) : TEXT("None");
+
+		Results.Add(MoveTemp(Info));
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("UWidgetService::FindLiveWidgets: '%s' -> %d result(s) (bLiveOnly=%s)"),
+		*WidgetClassOrPath, Results.Num(), bLiveOnly ? TEXT("true") : TEXT("false"));
+
+	return Results;
+}
+
+FString UWidgetService::GetLiveWidgetProperty(
+	const FString& WidgetObjectPath,
+	const FString& PropertyName,
+	const FString& ComponentName)
+{
+	if (WidgetObjectPath.IsEmpty() || PropertyName.IsEmpty())
+	{
+		return FString();
+	}
+
+	UUserWidget* WidgetInstance = FindObject<UUserWidget>(nullptr, *WidgetObjectPath);
+	if (!IsValid(WidgetInstance))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UWidgetService::GetLiveWidgetProperty: Widget instance not found: %s"), *WidgetObjectPath);
+		return FString();
+	}
+
+	// ComponentName empty targets the instance itself — FindRuntimeWidgetByName's empty-name
+	// behavior (-> RootWidget) must not leak here (this is a different contract from GetLiveProperty).
+	UWidget* TargetWidget = WidgetInstance;
+	if (!ComponentName.IsEmpty())
+	{
+		TargetWidget = FindRuntimeWidgetByName(WidgetInstance, ComponentName);
+	}
+	if (!TargetWidget)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UWidgetService::GetLiveWidgetProperty: Component '%s' not found on '%s'"), *ComponentName, *WidgetObjectPath);
+		return FString();
+	}
+
+	FResolvedWidgetProperty Resolved;
+	if (!ResolveWidgetProperty(TargetWidget, PropertyName, Resolved))
+	{
+		return FString();
+	}
+
+	FString ValueText;
+	Resolved.Property->ExportTextItem_Direct(ValueText, Resolved.ValuePtr, nullptr, Resolved.TargetObject, PPF_None);
+	return ValueText;
+}
+
 // =================================================================
 // Event Handling
 // =================================================================
@@ -3950,7 +4148,9 @@ bool UWidgetService::WidgetBlueprintExists(const FString& WidgetPath)
 	{
 		return false;
 	}
-	return UEditorAssetLibrary::DoesAssetExist(WidgetPath);
+	// UEditorAssetLibrary::DoesAssetExist is gated by CheckIfInEditorAndPIE and returns False
+	// for every asset while PIE is running — route through the PIE-safe primitive instead.
+	return VibeUEAssetExistence::AssetExists(WidgetPath);
 }
 
 bool UWidgetService::WidgetExists(const FString& WidgetPath, const FString& ComponentName)

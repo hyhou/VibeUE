@@ -35,6 +35,7 @@
 #include "UObject/SavePackage.h"
 #include "Misc/PackageName.h"
 #include "AssetRegistry/AssetRegistryModule.h"
+#include "Utils/AssetExistence.h"
 
 // =================================================================
 // Helper Methods
@@ -1903,10 +1904,12 @@ bool ULandscapeMaterialService::LandscapeMaterialExists(const FString& MaterialP
 		return false;
 	}
 
-	// A full content path resolves directly.
+	// A full content path resolves directly. UEditorAssetLibrary::DoesAssetExist is gated by
+	// CheckIfInEditorAndPIE and returns False for every asset while PIE is running — route
+	// through the PIE-safe primitive instead.
 	if (MaterialPath.StartsWith(TEXT("/")))
 	{
-		return UEditorAssetLibrary::DoesAssetExist(MaterialPath);
+		return VibeUEAssetExistence::AssetExists(MaterialPath);
 	}
 
 	// Bare asset name (e.g. "M_Landscape"): resolve via the AssetRegistry so callers
@@ -1927,5 +1930,5 @@ bool ULandscapeMaterialService::LandscapeMaterialExists(const FString& MaterialP
 
 bool ULandscapeMaterialService::LayerInfoExists(const FString& LayerInfoAssetPath)
 {
-	return UEditorAssetLibrary::DoesAssetExist(LayerInfoAssetPath);
+	return VibeUEAssetExistence::AssetExists(LayerInfoAssetPath);
 }
