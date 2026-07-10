@@ -636,7 +636,8 @@ bool USkeletonService::DuplicateSkeleton(const FString& SkeletalMeshPath, const 
 	// Save the new skeleton
 	if (!UEditorAssetLibrary::SaveAsset(NewSkeletonPath, false))
 	{
-		UE_LOG(LogTemp, Warning, TEXT("USkeletonService::DuplicateSkeleton: Failed to save new skeleton: %s"), *NewSkeletonPath);
+		UE_LOG(LogTemp, Error, TEXT("USkeletonService::DuplicateSkeleton: Failed to save new skeleton: %s"), *NewSkeletonPath);
+		return false;
 	}
 
 	UE_LOG(LogTemp, Log, TEXT("USkeletonService::DuplicateSkeleton: Successfully duplicated skeleton from '%s' to '%s'"), 

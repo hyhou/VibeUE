@@ -129,7 +129,7 @@ if not ok:
 
 - `apply_changes` **validates the scratch graphs before compiling** (duplicate same-named Map
   Get/Set pins used to fire a fatal engine assert and crash the editor — now it refuses with an
-  error naming the node/pin) and returns `False` when the compile produced errors.
+  error naming the node/pin) and returns `False` when compilation or the final asset save fails.
 - `get_compile_messages(system_path, errors_only=True)` returns the actual Niagara translator
   messages per script (`"Error: [Emitter/Script] message (node <guid>)"`). Call it after any failed
   compile instead of bisecting the graph.

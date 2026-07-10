@@ -398,10 +398,9 @@ FMetaSoundResult UMetaSoundService::CreateMetaSound(const FString& PackagePath,
 			{
 				if (!CommitEditing(FullPath, NewSource))
 				{
-					UE_LOG(LogMetaSoundService, Warning,
-					       TEXT("CreateMetaSound: SaveAsset failed for '%s'"), *FullPath);
+					return Fail(FString::Printf(
+						TEXT("CreateMetaSound: SaveAsset failed for '%s'"), *FullPath));
 				}
-				UEditorAssetLibrary::SaveAsset(FullPath, false);
 			}
 		}
 	}

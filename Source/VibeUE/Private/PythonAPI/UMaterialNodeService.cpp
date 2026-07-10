@@ -3472,7 +3472,9 @@ int32 UMaterialNodeService::CleanupUnusedExpressions(const FString& AssetPath)
 		Function->PostEditChange();
 		if (!UEditorAssetLibrary::SaveAsset(AssetPath, false))
 		{
-			UE_LOG(LogTemp, Warning, TEXT("UMaterialNodeService::CleanupUnusedExpressions: Failed to save '%s'"), *AssetPath);
+			UE_LOG(LogTemp, Error, TEXT("UMaterialNodeService::CleanupUnusedExpressions: Failed to save material function '%s' after removing %d unused expression(s)"),
+				*AssetPath, Unused.Num());
+			return -1;
 		}
 	}
 

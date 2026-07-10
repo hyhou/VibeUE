@@ -126,6 +126,9 @@ unreal.SkeletonService.set_bone_retargeting_mode("/Game/Characters/SK_Mannequin"
 #           {"mesh": {"refPath": "/Game/Characters/SKM_Mannequin"}})
 ```
 
+`duplicate_skeleton` returns `False` if the duplicated asset cannot be persisted; do not treat an
+on-disk save failure as a successful duplicate.
+
 ### Retargeting Mode Reference
 
 | Mode | Description | Use For |

@@ -1094,7 +1094,7 @@ public:
 	 * ever orphaned.
 	 *
 	 * @param AssetPath Full asset path to a UMaterial or UMaterialFunction
-	 * @return Number of expressions removed
+	 * @return Number of expressions removed, or -1 when a material function save fails
 	 *
 	 * Example:
 	 *   removed = unreal.MaterialNodeService.cleanup_unused_expressions("/Game/MF_MyLayer")

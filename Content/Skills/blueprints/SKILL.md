@@ -189,8 +189,8 @@ life  = unreal.BlueprintService.get_property(bp, "InitialLifeSpan")  # "5.000000
 # WRONG — raises ValueError: too many values to unpack
 # success, value = unreal.BlueprintService.get_property(bp, "bReplicates")
 
-# WRITE — values are strings; returns bool
-unreal.BlueprintService.set_property(bp, "bReplicates", "True")
+# WRITE — values are strings; returns False on parse, lookup, or persistence failure
+assert unreal.BlueprintService.set_property(bp, "bReplicates", "True")
 
 # Save + compile + persist in one guarded call (saves the dirty set_property edits BEFORE
 # compiling — a raw compile_blueprint resets unsaved template edits):

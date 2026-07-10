@@ -61,6 +61,7 @@ for n in nodes:
 
 ```python
 r = ms.create_meta_sound("/Game/Audio", "MS_SineLoop", "Mono")
+assert r.success, r.message
 asset_path = r.asset_path   # "/Game/Audio/MS_SineLoop"
 ```
 
@@ -139,7 +140,7 @@ ms.save_meta_sound(asset_path)
 
 | Method | Description |
 |--------|-------------|
-| `create_meta_sound(package_path, asset_name, output_format="Mono")` | Create a new MetaSound Source asset. Returns `FMetaSoundResult` with `asset_path`. |
+| `create_meta_sound(package_path, asset_name, output_format="Mono")` | Create and persist a new MetaSound Source asset. Returns a failed `FMetaSoundResult` if the final save fails. |
 | `delete_meta_sound(asset_path)` | Delete a MetaSound asset. |
 | `get_meta_sound_info(asset_path)` | Return `FMetaSoundInfo` (node count, output format, graph I/O names). |
 | `save_meta_sound(asset_path)` | Save after edits. **Always call after making graph changes.** |

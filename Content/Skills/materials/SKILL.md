@@ -319,6 +319,8 @@ Common material property internal names: `TwoSided`, `BlendMode`, `ShadingModel`
 After non-trivial wiring run `MaterialNodeService.get_material_diagnostics(path)` and confirm
 `is_compiled_ok` and the expected `referenced_texture_paths` — do **not** rely on `get_used_textures`
 (unreliable for multi-branch graphs). `compile_material` + `save_asset` to persist.
+`cleanup_unused_expressions(path)` returns the removal count, or `-1` if a Material Function's
+post-cleanup save fails; treat `-1` as failure rather than a successful cleanup.
 
 ## Related skills
 - **landscape-materials** — `LandscapeLayerBlend` nodes.

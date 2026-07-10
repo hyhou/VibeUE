@@ -1302,7 +1302,12 @@ bool UNiagaraScratchPadService::ApplyChanges(const FString& SystemPath)
 	System->RequestCompile(false);
 	System->WaitForCompilationComplete();
 
-	UEditorAssetLibrary::SaveLoadedAsset(System);
+	if (!UEditorAssetLibrary::SaveLoadedAsset(System))
+	{
+		UE_LOG(LogTemp, Error, TEXT("ApplyChanges: Failed to save Niagara system '%s' after compiling scratch-pad changes"),
+			*SystemPath);
+		return false;
+	}
 
 	// Surface the real compiler diagnostics instead of a bare true/false — a compile
 	// with errors is a failure the caller must see (issues #432, #352).

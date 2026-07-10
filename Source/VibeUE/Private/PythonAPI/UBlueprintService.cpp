@@ -5709,7 +5709,12 @@ bool UBlueprintService::SetProperty(
 	}
 
 	FBlueprintEditorUtils::MarkBlueprintAsModified(Blueprint);
-	UEditorAssetLibrary::SaveAsset(BlueprintPath, false);
+	if (!UEditorAssetLibrary::SaveAsset(BlueprintPath, false))
+	{
+		UE_LOG(LogTemp, Error, TEXT("SetProperty: Failed to save blueprint '%s' after setting property '%s'"),
+			*BlueprintPath, *PropertyName);
+		return false;
+	}
 
 	UE_LOG(LogTemp, Log, TEXT("SetProperty: Set property '%s' = '%s'"), *PropertyName, *PropertyValue);
 	return true;
