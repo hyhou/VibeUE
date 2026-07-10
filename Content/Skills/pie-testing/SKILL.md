@@ -97,6 +97,10 @@ tool-level control prefer the engine `EditorAppToolset` actions above.
 ## Gotchas
 
 - **PIE start is asynchronous.** `StartPIE` returns immediately after `RequestPlaySession` is queued. The world isn't actually playing until the editor processes the request on its next tick. If you need to act inside the running world, give it a tick or poll `IsPIERunning`.
+- **VibeUE tools are server-gated during bootstrap.** A call that overlaps world initialization
+  returns a structured `PIE_BOOTSTRAPPING` busy error with `retryable: true` and a suggested
+  `retry_after_ms`. Retry it after that delay; requests are rejected rather than queued, so there is
+  no hidden server-side timeout or stale operation that runs later.
 - **Already-running is treated as success.** `StartPIE` succeeds if a PIE session already exists — it does NOT restart. Stop first if you need a fresh session.
 - **`StopPIE` tears down the world** via `RequestEndPlayMap`. Spawned PIE widget instances should be removed with `WidgetService.remove_widget_from_pie(handle)` before stopping.
 - **Save before starting.** Dirty asset changes are NOT picked up by PIE unless saved/compiled. Always `unreal.BlueprintService.save_and_compile_blueprint(path)` before launching PIE to test Blueprint changes — it saves dirty template edits BEFORE compiling (a raw `compile_blueprint` resets them) and refuses explicitly if PIE is already running.

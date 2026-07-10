@@ -9,14 +9,90 @@
 #include "ModelContextProtocolToolResults.h"
 
 #include "Async/Async.h"
+#include "Containers/Ticker.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
+#include "Editor.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
 
+#include <atomic>
+
 namespace
 {
+	std::atomic_bool GPIEBootstrapping{false};
+	FDelegateHandle GPIEStartHandle;
+	FDelegateHandle GPIEBeginHandle;
+	FDelegateHandle GPIEPostStartedHandle;
+	FDelegateHandle GPIECancelHandle;
+	FTSTicker::FDelegateHandle GPIEReadyTickerHandle;
+
+	bool FinishPIEBootstrapOnNextTick(float /*DeltaTime*/)
+	{
+		GPIEBootstrapping.store(false, std::memory_order_release);
+		GPIEReadyTickerHandle.Reset();
+		UE_LOG(LogToolRegistry, Verbose,
+			TEXT("VibeUE: PIE bootstrap complete; MCP tool execution resumed."));
+		return false;
+	}
+
+	void CancelPendingPIEReadyTick()
+	{
+		if (GPIEReadyTickerHandle.IsValid())
+		{
+			FTSTicker::GetCoreTicker().RemoveTicker(GPIEReadyTickerHandle);
+			GPIEReadyTickerHandle.Reset();
+		}
+	}
+
+	void MarkPIEBootstrapStarted(bool /*bIsSimulating*/)
+	{
+		CancelPendingPIEReadyTick();
+		GPIEBootstrapping.store(true, std::memory_order_release);
+		UE_LOG(LogToolRegistry, Verbose,
+			TEXT("VibeUE: PIE bootstrap started; MCP tool execution temporarily unavailable."));
+	}
+
+	void MarkPIEBootstrapPostStarted(bool /*bIsSimulating*/)
+	{
+		// PostPIEStarted fires after BeginPlay, but keep the gate closed for one more editor tick.
+		// This prevents a request arriving from another thread during the delegate broadcast from
+		// entering viewport code while StartPlayInEditorSession is still unwinding.
+		CancelPendingPIEReadyTick();
+		GPIEReadyTickerHandle = FTSTicker::GetCoreTicker().AddTicker(
+			FTickerDelegate::CreateStatic(&FinishPIEBootstrapOnNextTick));
+	}
+
+	void MarkPIEBootstrapCancelled()
+	{
+		CancelPendingPIEReadyTick();
+		GPIEBootstrapping.store(false, std::memory_order_release);
+	}
+
+	bool IsPIEBootstrapping()
+	{
+		return GPIEBootstrapping.load(std::memory_order_acquire);
+	}
+
+	FModelContextProtocolToolResult MakePIEBootstrapBusyResult(const FString& ToolName)
+	{
+		TSharedRef<FJsonObject> Busy = MakeShared<FJsonObject>();
+		Busy->SetBoolField(TEXT("success"), false);
+		Busy->SetStringField(TEXT("state"), TEXT("busy"));
+		Busy->SetStringField(TEXT("error_code"), TEXT("PIE_BOOTSTRAPPING"));
+		Busy->SetStringField(TEXT("message"),
+			TEXT("Play-In-Editor is still initializing. Retry this tool after PIE reports ready."));
+		Busy->SetBoolField(TEXT("retryable"), true);
+		Busy->SetNumberField(TEXT("retry_after_ms"), 250);
+		Busy->SetStringField(TEXT("tool"), ToolName);
+
+		TSharedPtr<FJsonValue> BusyValue = MakeShared<FJsonValueObject>(Busy);
+		FModelContextProtocolToolResult Result = UE::ModelContextProtocol::MakeStructuredContentResult(BusyValue);
+		Result.JsonObject->SetBoolField(TEXT("isError"), true);
+		return Result;
+	}
+
 	/** Map a VibeUE FToolParameter type string to a JSON Schema type. */
 	FString ToJsonSchemaType(const FString& VibeType)
 	{
@@ -170,8 +246,23 @@ namespace
 			const FString ToolName = Name;
 			TMap<FString, FString> Args = JsonObjectToArgMap(Params);
 
+			// Reject on the caller thread when possible so requests do not accumulate behind the
+			// synchronous PIE startup path. The Execute check below closes the race where PIE starts
+			// after this check but before a queued game-thread task runs.
+			if (IsPIEBootstrapping())
+			{
+				OnComplete(MakePIEBootstrapBusyResult(ToolName));
+				return;
+			}
+
 			auto Execute = [ToolName, Args = MoveTemp(Args), OnComplete]()
 			{
+				if (IsPIEBootstrapping())
+				{
+					OnComplete(MakePIEBootstrapBusyResult(ToolName));
+					return;
+				}
+
 				const FString Result = FToolRegistry::Get().ExecuteTool(ToolName, Args);
 
 				// VibeUE tools report failure as {"success": false, ...}; surface that as an MCP error.
@@ -252,10 +343,30 @@ namespace VibeUEMCPToolBridge
 		UE_LOG(LogToolRegistry, Display,
 			TEXT("VibeUE: exposed %d tool(s) on Epic's MCP endpoint (%d internal/testing tools skipped)."),
 			Registered, Skipped);
+
+		if (!GPIEStartHandle.IsValid())
+		{
+			GPIEStartHandle = FEditorDelegates::StartPIE.AddStatic(&MarkPIEBootstrapStarted);
+			GPIEBeginHandle = FEditorDelegates::BeginPIE.AddStatic(&MarkPIEBootstrapStarted);
+			GPIEPostStartedHandle = FEditorDelegates::PostPIEStarted.AddStatic(&MarkPIEBootstrapPostStarted);
+			GPIECancelHandle = FEditorDelegates::CancelPIE.AddStatic(&MarkPIEBootstrapCancelled);
+		}
 	}
 
 	void UnregisterAll()
 	{
+		CancelPendingPIEReadyTick();
+		GPIEBootstrapping.store(false, std::memory_order_release);
+
+		FEditorDelegates::StartPIE.Remove(GPIEStartHandle);
+		FEditorDelegates::BeginPIE.Remove(GPIEBeginHandle);
+		FEditorDelegates::PostPIEStarted.Remove(GPIEPostStartedHandle);
+		FEditorDelegates::CancelPIE.Remove(GPIECancelHandle);
+		GPIEStartHandle.Reset();
+		GPIEBeginHandle.Reset();
+		GPIEPostStartedHandle.Reset();
+		GPIECancelHandle.Reset();
+
 		if (IModelContextProtocolModule* Module = IModelContextProtocolModule::Get())
 		{
 			for (const TSharedRef<IModelContextProtocolTool>& Tool : GRegisteredTools)

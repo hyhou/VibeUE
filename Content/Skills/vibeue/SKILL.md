@@ -11,6 +11,11 @@ Skill packs (this file and its siblings) are loaded through the engine's `AgentS
 Each skill carries exact API patterns and gotchas; **load the relevant skill before writing any
 code** in a domain, or you will guess wrong property names and spiral into discovery loops.
 
+During PIE startup, VibeUE's bridged tools reject requests with a structured
+`PIE_BOOTSTRAPPING` busy error (`retryable: true`, `retry_after_ms: 250`) until the world has
+finished `BeginPlay` and the editor has completed one additional tick. Retry after the suggested
+delay; the gate reopens automatically.
+
 ## Discover and load skills
 
 Skills are discovered and read through the engine `AgentSkillToolset`, invoked with `call_tool`:
