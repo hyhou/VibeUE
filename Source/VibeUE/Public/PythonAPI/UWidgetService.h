@@ -1001,16 +1001,23 @@ public:
 	/**
 	 * Find live (or, with bLiveOnly=false, template/CDO) UUserWidget instances of a class.
 	 * PIE-safe: resolves the class via AssetRegistry/LoadObject, never UEditorAssetLibrary.
+	 * Stale reinstance objects (Default__ object paths or REINST_ classes) are excluded by
+	 * default so a dead embedded prototype cannot be mistaken for a live runtime widget.
 	 * Maps to action="find_live_widgets"
 	 *
 	 * @param WidgetClassOrPath - native widget type name, bare WBP name, WBP package/object path,
 	 *                            or generated-class path (".../WBP_Foo.WBP_Foo_C")
 	 * @param bLiveOnly         - if true (default), only return instances with bIsLiveInstance=true
 	 *                            (templates/CDOs excluded); if false, include everything found
+	 * @param bIncludeZombies   - if false (default), exclude Default__ paths and REINST_ classes;
+	 *                            set true only for reinstance diagnostics
 	 * @return Array of matching widget instances (see FVibeUELiveWidgetInfo)
 	 */
 	UFUNCTION(BlueprintCallable, meta = (AICallable), Category = "VibeUE|Widgets|PIE")
-	static TArray<FVibeUELiveWidgetInfo> FindLiveWidgets(const FString& WidgetClassOrPath, bool bLiveOnly = true);
+	static TArray<FVibeUELiveWidgetInfo> FindLiveWidgets(
+		const FString& WidgetClassOrPath,
+		bool bLiveOnly = true,
+		bool bIncludeZombies = false);
 
 	/**
 	 * Read a property from a live widget instance found via FindLiveWidgets, by object path.
@@ -1021,13 +1028,16 @@ public:
 	 * @param PropertyName     - Name of the property to read
 	 * @param ComponentName    - Empty (default) targets the UUserWidget instance itself;
 	 *                           non-empty descends to a named child widget in its WidgetTree
+	 * @param bIncludeZombies  - if false (default), reject Default__ paths and REINST_ classes;
+	 *                           set true only for reinstance diagnostics
 	 * @return Exported property value as text, or empty string if not found (no crash)
 	 */
 	UFUNCTION(BlueprintCallable, meta = (AICallable), Category = "VibeUE|Widgets|PIE")
 	static FString GetLiveWidgetProperty(
 		const FString& WidgetObjectPath,
 		const FString& PropertyName,
-		const FString& ComponentName = TEXT(""));
+		const FString& ComponentName = TEXT(""),
+		bool bIncludeZombies = false);
 
 	// =================================================================
 	// Event Handling (get_available_events, bind_events)

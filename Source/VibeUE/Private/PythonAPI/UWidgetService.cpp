@@ -2990,6 +2990,22 @@ bool UWidgetService::IsPIERunning()
 	return GEditor && (GEditor->PlayWorld != nullptr || GEditor->bIsSimulatingInEditor);
 }
 
+namespace
+{
+	bool IsReinstanceZombieWidget(const UUserWidget* Widget)
+	{
+		if (!Widget)
+		{
+			return false;
+		}
+
+		const FString ObjectPath = Widget->GetPathName();
+		const UClass* WidgetClass = Widget->GetClass();
+		return ObjectPath.Contains(TEXT("Default__"), ESearchCase::CaseSensitive)
+			|| (WidgetClass && WidgetClass->GetName().StartsWith(TEXT("REINST_"), ESearchCase::CaseSensitive));
+	}
+}
+
 FPIEWidgetHandle UWidgetService::SpawnWidgetInPIE(
 	const FString& WidgetPath,
 	int32 ZOrder)
@@ -3176,7 +3192,10 @@ UClass* UWidgetService::ResolveUserWidgetClass(const FString& WidgetClassOrPath)
 	return nullptr;
 }
 
-TArray<FVibeUELiveWidgetInfo> UWidgetService::FindLiveWidgets(const FString& WidgetClassOrPath, bool bLiveOnly)
+TArray<FVibeUELiveWidgetInfo> UWidgetService::FindLiveWidgets(
+	const FString& WidgetClassOrPath,
+	bool bLiveOnly,
+	bool bIncludeZombies)
 {
 	TArray<FVibeUELiveWidgetInfo> Results;
 
@@ -3194,6 +3213,11 @@ TArray<FVibeUELiveWidgetInfo> UWidgetService::FindLiveWidgets(const FString& Wid
 	{
 		UUserWidget* Widget = *It;
 		if (!IsValid(Widget) || !Widget->IsA(ResolvedClass))
+		{
+			continue;
+		}
+
+		if (!bIncludeZombies && IsReinstanceZombieWidget(Widget))
 		{
 			continue;
 		}
@@ -3248,8 +3272,11 @@ TArray<FVibeUELiveWidgetInfo> UWidgetService::FindLiveWidgets(const FString& Wid
 		Results.Add(MoveTemp(Info));
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("UWidgetService::FindLiveWidgets: '%s' -> %d result(s) (bLiveOnly=%s)"),
-		*WidgetClassOrPath, Results.Num(), bLiveOnly ? TEXT("true") : TEXT("false"));
+	UE_LOG(LogTemp, Log, TEXT("UWidgetService::FindLiveWidgets: '%s' -> %d result(s) (bLiveOnly=%s, bIncludeZombies=%s)"),
+		*WidgetClassOrPath,
+		Results.Num(),
+		bLiveOnly ? TEXT("true") : TEXT("false"),
+		bIncludeZombies ? TEXT("true") : TEXT("false"));
 
 	return Results;
 }
@@ -3257,7 +3284,8 @@ TArray<FVibeUELiveWidgetInfo> UWidgetService::FindLiveWidgets(const FString& Wid
 FString UWidgetService::GetLiveWidgetProperty(
 	const FString& WidgetObjectPath,
 	const FString& PropertyName,
-	const FString& ComponentName)
+	const FString& ComponentName,
+	bool bIncludeZombies)
 {
 	if (WidgetObjectPath.IsEmpty() || PropertyName.IsEmpty())
 	{
@@ -3268,6 +3296,12 @@ FString UWidgetService::GetLiveWidgetProperty(
 	if (!IsValid(WidgetInstance))
 	{
 		UE_LOG(LogTemp, Warning, TEXT("UWidgetService::GetLiveWidgetProperty: Widget instance not found: %s"), *WidgetObjectPath);
+		return FString();
+	}
+
+	if (!bIncludeZombies && IsReinstanceZombieWidget(WidgetInstance))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UWidgetService::GetLiveWidgetProperty: Rejected stale reinstance widget by default: %s"), *WidgetObjectPath);
 		return FString();
 	}
 

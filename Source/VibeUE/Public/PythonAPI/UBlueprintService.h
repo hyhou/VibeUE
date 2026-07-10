@@ -877,7 +877,7 @@ struct FBlueprintSaveCompileResult
 {
 	GENERATED_BODY()
 
-	/** True if compiled with 0 errors and every save this call attempted succeeded. */
+	/** True if target and requested direct consumers compiled with 0 errors and every attempted save succeeded. */
 	UPROPERTY(BlueprintReadWrite, Category = "Blueprint")
 	bool bSuccess = false;
 
@@ -905,7 +905,25 @@ struct FBlueprintSaveCompileResult
 	UPROPERTY(BlueprintReadWrite, Category = "Blueprint")
 	TArray<FString> Warnings;
 
-	/** Human-readable failure reason (PIE active, blueprint not found); empty on success. */
+	/** Direct Widget Blueprint referencers successfully recompiled after the target. */
+	UPROPERTY(BlueprintReadWrite, Category = "Blueprint")
+	TArray<FString> RecompiledConsumerBlueprintPaths;
+
+	/** Direct Widget Blueprint referencers whose pre-save, compile, or post-save failed. */
+	UPROPERTY(BlueprintReadWrite, Category = "Blueprint")
+	TArray<FString> FailedConsumerBlueprintPaths;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Blueprint")
+	int32 NumConsumerBlueprintsRecompiled = 0;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Blueprint")
+	int32 NumConsumerBlueprintsFailed = 0;
+
+	/** True when more than the guarded maximum of 32 direct Widget Blueprint consumers were found. */
+	UPROPERTY(BlueprintReadWrite, Category = "Blueprint")
+	bool bConsumerRecompileLimitReached = false;
+
+	/** Human-readable failure reason (including partial consumer failure); empty on success. */
 	UPROPERTY(BlueprintReadWrite, Category = "Blueprint")
 	FString ErrorMessage;
 };
@@ -3149,6 +3167,9 @@ public:
 	 *
 	 * @param BlueprintPath     - Full path to the blueprint (UWidgetBlueprint is also a UBlueprint)
 	 * @param bSaveAfterCompile - If true (default), save again after compiling to persist the result
+	 * @param bRecompileConsumers - For Widget Blueprints, recompile direct Widget Blueprint
+	 *                              referencers after the target (default true). This is one level
+	 *                              only and guarded at 32 consumers.
 	 * @return Result with per-stage success flags and compile errors/warnings (see FBlueprintSaveCompileResult)
 	 *
 	 * Refuses to run while PIE is active (asset saves are blocked during PIE) — ErrorMessage
@@ -3160,7 +3181,10 @@ public:
 	 *       print(result.error_message or result.errors)
 	 */
 	UFUNCTION(BlueprintCallable, meta = (AICallable), Category = "VibeUE|Blueprint")
-	static FBlueprintSaveCompileResult SaveAndCompileBlueprint(const FString& BlueprintPath, bool bSaveAfterCompile = true);
+	static FBlueprintSaveCompileResult SaveAndCompileBlueprint(
+		const FString& BlueprintPath,
+		bool bSaveAfterCompile = true,
+		bool bRecompileConsumers = true);
 
 	// ============================================================================
 	// EXISTENCE CHECKS - Fast boolean checks before creation (Idempotency)

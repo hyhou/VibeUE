@@ -91,6 +91,11 @@ hits = unreal.WidgetService.find_live_widgets("WBP_HUD")  # class name, /Game pa
 val = unreal.WidgetService.get_live_widget_property(hits[0].object_path, "Visibility")
 ```
 
+Both live-widget calls reject `Default__` object paths and `REINST_*` classes by default. That
+filter is part of the evidence contract, not a caller-side cleanup step. Use
+`include_zombies=True` only for reinstance diagnostics; combine it with `live_only=False` when
+you intentionally need template/CDO objects too.
+
 `unreal.WidgetService.is_pie_running()` also still exists and is handy from inside Python; for
 tool-level control prefer the engine `EditorAppToolset` actions above.
 

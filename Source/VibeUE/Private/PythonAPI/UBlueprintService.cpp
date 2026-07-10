@@ -2,6 +2,7 @@
 
 #include "PythonAPI/UBlueprintService.h"
 #include "PythonAPI/BlueprintTypeParser.h"
+#include "PythonAPI/UAssetDiscoveryService.h"
 #include "Engine/Blueprint.h"
 #include "Engine/BlueprintGeneratedClass.h"
 #include "Engine/SimpleConstructionScript.h"
@@ -7234,8 +7235,12 @@ FString UBlueprintService::CreateNodeByKey(
 // SAVE & COMPILE
 // ============================================================================
 
-FBlueprintSaveCompileResult UBlueprintService::SaveAndCompileBlueprint(const FString& BlueprintPath, bool bSaveAfterCompile)
+FBlueprintSaveCompileResult UBlueprintService::SaveAndCompileBlueprint(
+	const FString& BlueprintPath,
+	bool bSaveAfterCompile,
+	bool bRecompileConsumers)
 {
+	constexpr int32 MaxConsumerBlueprintRecompiles = 32;
 	FBlueprintSaveCompileResult Result;
 
 	if (GEditor && (GEditor->PlayWorld || GEditor->bIsSimulatingInEditor))
@@ -7310,14 +7315,153 @@ FBlueprintSaveCompileResult UBlueprintService::SaveAndCompileBlueprint(const FSt
 		}
 	}
 
-	Result.bSuccess = Result.bCompiled && Result.NumErrors == 0 && bPreSaveOk && bPostSaveOk;
+	bool bConsumersOk = true;
+	if (bRecompileConsumers && Blueprint->IsA<UWidgetBlueprint>() && Result.NumErrors == 0 && bPreSaveOk && bPostSaveOk)
+	{
+		TArray<FString> ConsumerPaths;
+		for (const FString& ReferencerPath : UAssetDiscoveryService::GetReferencers(BlueprintPath, /*bIncludeHard=*/true, /*bIncludeSoft=*/true))
+		{
+			if (ReferencerPath == Blueprint->GetOutermost()->GetName())
+			{
+				continue;
+			}
 
-	UE_LOG(LogTemp, Log, TEXT("UBlueprintService::SaveAndCompileBlueprint: '%s' -> success=%s (errors=%d, warnings=%d, savedBefore=%s, savedAfter=%s)"),
+			UBlueprint* ConsumerBlueprint = LoadBlueprint(ReferencerPath);
+			if (ConsumerBlueprint && ConsumerBlueprint->IsA<UWidgetBlueprint>())
+			{
+				ConsumerPaths.AddUnique(ReferencerPath);
+			}
+		}
+
+		// AssetRegistry dependency updates from a just-saved new WBP are published on the next
+		// editor tick. Preserve GetReferencers as the broad/unloaded source, then close that
+		// same-call gap by inspecting loaded WidgetTree templates for a direct generated-class
+		// reference. A newly-created consumer is necessarily loaded, so the union is complete.
+		for (TObjectIterator<UWidgetBlueprint> It; It; ++It)
+		{
+			UWidgetBlueprint* LoadedConsumer = *It;
+			if (!IsValid(LoadedConsumer) || LoadedConsumer == Blueprint || !LoadedConsumer->WidgetTree)
+			{
+				continue;
+			}
+
+			bool bReferencesTargetDirectly = false;
+			LoadedConsumer->WidgetTree->ForEachWidget([&bReferencesTargetDirectly, Blueprint](UWidget* WidgetTemplate)
+			{
+				const UClass* TemplateClass = WidgetTemplate ? WidgetTemplate->GetClass() : nullptr;
+				if (TemplateClass && TemplateClass->ClassGeneratedBy == Blueprint)
+				{
+					bReferencesTargetDirectly = true;
+				}
+			});
+
+			if (bReferencesTargetDirectly)
+			{
+				ConsumerPaths.AddUnique(LoadedConsumer->GetOutermost()->GetName());
+			}
+		}
+		ConsumerPaths.Sort();
+
+		if (ConsumerPaths.Num() > MaxConsumerBlueprintRecompiles)
+		{
+			Result.bConsumerRecompileLimitReached = true;
+			bConsumersOk = false;
+			const FString LimitError = FString::Printf(
+				TEXT("Direct Widget Blueprint consumer count %d exceeds guarded maximum %d; only the first %d were recompiled"),
+				ConsumerPaths.Num(), MaxConsumerBlueprintRecompiles, MaxConsumerBlueprintRecompiles);
+			Result.Errors.Add(LimitError);
+			Result.ErrorMessage = LimitError;
+		}
+
+		const int32 NumConsumersToCompile = FMath::Min(ConsumerPaths.Num(), MaxConsumerBlueprintRecompiles);
+		for (int32 ConsumerIndex = 0; ConsumerIndex < NumConsumersToCompile; ++ConsumerIndex)
+		{
+			const FString& ConsumerPath = ConsumerPaths[ConsumerIndex];
+			UBlueprint* ConsumerBlueprint = LoadBlueprint(ConsumerPath);
+			bool bConsumerOk = ConsumerBlueprint != nullptr;
+
+			if (bConsumerOk)
+			{
+				UPackage* ConsumerPackage = ConsumerBlueprint->GetOutermost();
+				if (ConsumerPackage && ConsumerPackage->IsDirty())
+				{
+					bConsumerOk = UEditorLoadingAndSavingUtils::SavePackages({ ConsumerPackage }, /*bOnlyDirty=*/false);
+					if (!bConsumerOk)
+					{
+						Result.Errors.Add(FString::Printf(TEXT("[%s] Pre-compile save failed; consumer compile aborted"), *ConsumerPath));
+					}
+				}
+
+				if (bConsumerOk)
+				{
+					FCompilerResultsLog ConsumerCompileResults;
+					ConsumerCompileResults.bSilentMode = false;
+					ConsumerCompileResults.bLogInfoOnly = false;
+					FKismetEditorUtilities::CompileBlueprint(ConsumerBlueprint, EBlueprintCompileOptions::None, &ConsumerCompileResults);
+
+					for (const TSharedRef<FTokenizedMessage>& Msg : ConsumerCompileResults.Messages)
+					{
+						const FString PrefixedMessage = FString::Printf(TEXT("[%s] %s"), *ConsumerPath, *Msg->ToText().ToString());
+						if (Msg->GetSeverity() == EMessageSeverity::Error)
+						{
+							Result.Errors.Add(PrefixedMessage);
+						}
+						else if (Msg->GetSeverity() == EMessageSeverity::Warning || Msg->GetSeverity() == EMessageSeverity::PerformanceWarning)
+						{
+							Result.Warnings.Add(PrefixedMessage);
+						}
+					}
+
+					Result.NumErrors += ConsumerCompileResults.NumErrors;
+					Result.NumWarnings += ConsumerCompileResults.NumWarnings;
+					bConsumerOk = ConsumerCompileResults.NumErrors == 0;
+
+					if (bSaveAfterCompile && ConsumerPackage && ConsumerPackage->IsDirty())
+					{
+						const bool bConsumerPostSaveOk = UEditorLoadingAndSavingUtils::SavePackages({ ConsumerPackage }, /*bOnlyDirty=*/false);
+						if (!bConsumerPostSaveOk)
+						{
+							Result.Errors.Add(FString::Printf(TEXT("[%s] Post-compile save failed"), *ConsumerPath));
+							bConsumerOk = false;
+						}
+					}
+				}
+			}
+			else
+			{
+				Result.Errors.Add(FString::Printf(TEXT("[%s] Widget Blueprint consumer could not be loaded"), *ConsumerPath));
+			}
+
+			if (bConsumerOk)
+			{
+				Result.RecompiledConsumerBlueprintPaths.Add(ConsumerPath);
+			}
+			else
+			{
+				Result.FailedConsumerBlueprintPaths.Add(ConsumerPath);
+				bConsumersOk = false;
+			}
+		}
+
+		if (!bConsumersOk && Result.ErrorMessage.IsEmpty())
+		{
+			Result.ErrorMessage = TEXT("One or more direct Widget Blueprint consumers failed to recompile");
+		}
+	}
+
+	Result.NumConsumerBlueprintsRecompiled = Result.RecompiledConsumerBlueprintPaths.Num();
+	Result.NumConsumerBlueprintsFailed = Result.FailedConsumerBlueprintPaths.Num();
+	Result.bSuccess = Result.bCompiled && Result.NumErrors == 0 && bPreSaveOk && bPostSaveOk && bConsumersOk;
+
+	UE_LOG(LogTemp, Log, TEXT("UBlueprintService::SaveAndCompileBlueprint: '%s' -> success=%s (errors=%d, warnings=%d, savedBefore=%s, savedAfter=%s, consumersRecompiled=%d, consumersFailed=%d, consumerLimitReached=%s)"),
 		*BlueprintPath,
 		Result.bSuccess ? TEXT("true") : TEXT("false"),
 		Result.NumErrors, Result.NumWarnings,
 		Result.bSavedBeforeCompile ? TEXT("true") : TEXT("false"),
-		Result.bSavedAfterCompile ? TEXT("true") : TEXT("false"));
+		Result.bSavedAfterCompile ? TEXT("true") : TEXT("false"),
+		Result.NumConsumerBlueprintsRecompiled,
+		Result.NumConsumerBlueprintsFailed,
+		Result.bConsumerRecompileLimitReached ? TEXT("true") : TEXT("false"));
 
 	return Result;
 }

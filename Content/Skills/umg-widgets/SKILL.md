@@ -120,6 +120,11 @@ then the track, then keyframes. (Runnable: `scripts/create_animation.txt`.)
 - `start_pie` + `spawn_widget_in_pie` are for runtime state / live property reads — use only when you
   need a live instance.
 
+`find_live_widgets` and `get_live_widget_property` exclude stale reinstance objects by default:
+object paths containing `Default__` and classes named `REINST_*` are not live evidence. Pass
+`include_zombies=True` only when diagnosing reinstance state (and `live_only=False` as well if you
+also need templates/CDOs).
+
 ### 🚨 Custom WBPs as components — discover first, pass the asset name
 
 Use `list_widget_blueprints("")` to find existing WBPs, then pass just the asset name (e.g.
@@ -255,6 +260,9 @@ loader that exposes this skill; there is no `vibeue-skills-manager` tool):
 2. After property/style edits: read the value back (`get_property` / `get_font` / `get_brush`).
 3. `unreal.BlueprintService.save_and_compile_blueprint(path)` — saves the dirty package BEFORE
    compiling (an unguarded compile resets unsaved template-property edits), then compiles and
-   persists; check `num_errors == 0`. Don't hand-order `save_asset`/`compile_blueprint` yourself.
+   persists. For a Widget Blueprint it also recompiles direct Widget Blueprint consumers by
+   default, so embedded child prototypes are reinstanced without a separate parent compile. Check
+   `success`, `recompiled_consumer_blueprint_paths`, and `failed_consumer_blueprint_paths`; don't
+   hand-order `save_asset`/`compile_blueprint` yourself.
 
 Never report a widget as created/configured until it appears in a fresh `get_widget_snapshot` result.

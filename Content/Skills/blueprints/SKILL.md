@@ -393,4 +393,11 @@ package BEFORE compiling (an unguarded compile resets unsaved template-property 
 persists, and returns `num_errors` / `num_warnings` / per-severity messages; it refuses explicitly
 while PIE is active. The raw engine `BlueprintTools.compile_blueprint` toolset call still exists but
 has no save guard — only use it when you know the package is clean.
+
+For Widget Blueprints, the same call recompiles direct Widget Blueprint referencers by default
+(`recompile_consumers=False` opts out). This is intentionally one level deep and capped at 32:
+the stale embedded prototype lives in the direct consumer, while recursive recompilation would
+expand unrelated work and failure surface. Inspect `recompiled_consumer_blueprint_paths`,
+`failed_consumer_blueprint_paths`, and `consumer_recompile_limit_reached`; a failed consumer or
+limit hit makes `success` false even when the target itself has `compiled == True`.
 Don't claim success until compile reports zero errors.
