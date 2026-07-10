@@ -180,10 +180,18 @@ For "do our widgets follow best practices?" style audits:
   (values `Fill`/`Left`/`Center`/`Right`/`Top`/`Bottom`), `Padding` (one value or `(Left=..,Top=..,Right=..,Bottom=..)`),
   `Padding Left/Top/Right/Bottom`, and on box slots `Size Rule` (`Fill`/`Automatic`) + `Size Value`.
 
+`Padding` remains the backward-compatible alias for the containing slot. When a widget class also
+has its own `Padding` field (for example `Border`), use explicit paths to avoid ambiguity:
+`Slot.Padding` / `Slot.Padding.Left` for layout padding, and `Widget.Padding` /
+`Widget.Padding.Left` for the widget's content padding. The same paths work with `get_property` and
+`set_property`; whole-margin writes accept either one number or the full margin struct.
+
 ```python
 unreal.WidgetService.set_property(path, "PlayButton", "ZOrder", "5")
 unreal.WidgetService.set_property(path, "HeaderRow", "Vertical Alignment", "Top")
 unreal.WidgetService.set_property(path, "HeaderRow", "Padding", "8")
+unreal.WidgetService.set_property(path, "CardBorder", "Slot.Padding", "8")
+unreal.WidgetService.set_property(path, "CardBorder", "Widget.Padding", "12")
 ```
 
 ### Reparenting — `reparent_widget`

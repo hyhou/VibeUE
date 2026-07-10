@@ -269,6 +269,31 @@ namespace
 			return false;
 		}
 
+		// Explicit padding namespaces disambiguate a widget's own FMargin Padding from the
+		// padding on the slot that contains it. Support scalar sub-paths on both sides too
+		// (for example Slot.Padding.Left and Widget.Padding.Bottom).
+		const FString SlotPaddingPath = TEXT("Slot.Padding");
+		if (PropertyName.Equals(SlotPaddingPath, ESearchCase::IgnoreCase) ||
+			PropertyName.StartsWith(SlotPaddingPath + TEXT("."), ESearchCase::IgnoreCase))
+		{
+			if (!Widget->Slot)
+			{
+				return false;
+			}
+			OutTargetObject = Widget->Slot;
+			OutResolvedPath = PropertyName.RightChop(5); // Strip "Slot."
+			return true;
+		}
+
+		const FString WidgetPaddingPath = TEXT("Widget.Padding");
+		if (PropertyName.Equals(WidgetPaddingPath, ESearchCase::IgnoreCase) ||
+			PropertyName.StartsWith(WidgetPaddingPath + TEXT("."), ESearchCase::IgnoreCase))
+		{
+			OutTargetObject = Widget;
+			OutResolvedPath = PropertyName.RightChop(7); // Strip "Widget."
+			return true;
+		}
+
 		if (PropertyName.Equals(TEXT("Position X"), ESearchCase::IgnoreCase) && Widget->Slot)
 		{
 			OutTargetObject = Widget->Slot;
@@ -463,9 +488,12 @@ namespace
 		FString V = Value;
 		V.TrimStartAndEndInline();
 
-		// Full "Padding" with a single number -> apply to all four sides (FMargin's ImportText needs
-		// the struct form, so expand "8" to "(Left=8,Top=8,Right=8,Bottom=8)").
-		if (PropertyName.Equals(TEXT("Padding"), ESearchCase::IgnoreCase) &&
+		// A whole Padding field with a single number -> apply to all four sides (FMargin's
+		// ImportText needs the struct form, so expand "8" to the full margin struct).
+		const bool bIsWholePadding = PropertyName.Equals(TEXT("Padding"), ESearchCase::IgnoreCase) ||
+			PropertyName.Equals(TEXT("Slot.Padding"), ESearchCase::IgnoreCase) ||
+			PropertyName.Equals(TEXT("Widget.Padding"), ESearchCase::IgnoreCase);
+		if (bIsWholePadding &&
 			!V.Contains(TEXT("=")) && !V.Contains(TEXT(",")))
 		{
 			float Pad = 0.0f;
