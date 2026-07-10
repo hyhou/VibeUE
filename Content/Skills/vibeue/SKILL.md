@@ -3,9 +3,15 @@ name: vibeue
 description: Unreal Engine 5 development using the VibeUE Python API. Use when working in Unreal Engine — blueprints, state trees, materials, actors, landscapes, animation, niagara, widgets, sound, foliage, gameplay tags, enhanced input, skeletons, PCG (procedural content generation), and more. VibeUE is an extension of Unreal's native MCP endpoint.
 ---
 
-VibeUE is an **extension on Unreal Engine's native MCP endpoint** (`http://localhost:8000/mcp`).
+VibeUE is an **extension on Unreal Engine's configured native MCP endpoint** (default:
+`http://localhost:8000/mcp`).
 There is no separate VibeUE server, no API key, and no in-editor chat — VibeUE simply registers
 extra Python services (`unreal.<Service>`) and skill packs on top of the engine's own toolsets.
+
+After registration, VibeUE self-probes the configured native MCP port and logs a prominent error if
+this UnrealEditor process did not actually bind it. If the message mentions a CrashReportClient
+socket squat, close the stale crash reporter, restart UnrealEditor, and verify the configured port
+belongs to the new editor process before retrying the client.
 
 Skill packs (this file and its siblings) are loaded through the engine's `AgentSkillToolset`.
 Each skill carries exact API patterns and gotchas; **load the relevant skill before writing any

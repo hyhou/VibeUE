@@ -7,12 +7,15 @@
 #include "IModelContextProtocolModule.h"
 #include "IModelContextProtocolTool.h"
 #include "ModelContextProtocolToolResults.h"
+#include "ModelContextProtocolServer.h"
+#include "ModelContextProtocolSettings.h"
 
 #include "Async/Async.h"
 #include "Containers/Ticker.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "Editor.h"
+#include "HttpServerModule.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
@@ -27,6 +30,59 @@ namespace
 	FDelegateHandle GPIEPostStartedHandle;
 	FDelegateHandle GPIECancelHandle;
 	FTSTicker::FDelegateHandle GPIEReadyTickerHandle;
+	FTSTicker::FDelegateHandle GMCPListenerProbeTickerHandle;
+
+	bool ProbeMCPListenerOnNextTick(float /*DeltaTime*/)
+	{
+		GMCPListenerProbeTickerHandle.Reset();
+
+		IModelContextProtocolModule* Module = IModelContextProtocolModule::Get();
+		FModelContextProtocolServer* Server = Module ? Module->GetServer() : nullptr;
+		const uint32 ExpectedPort = UE::ModelContextProtocol::GetServerPortNumber();
+		if (!Server || !Server->IsServerRunning())
+		{
+			UE_LOG(LogToolRegistry, Error,
+				TEXT("VibeUE endpoint self-probe FAILED: Epic's MCP server is not running; expected this UnrealEditor process to listen on port %u. Check Model Context Protocol auto-start settings, then restart the editor."),
+				ExpectedPort);
+			return false;
+		}
+
+		const uint32 ReportedPort = Server->GetServerPort();
+		if (ReportedPort != ExpectedPort)
+		{
+			UE_LOG(LogToolRegistry, Error,
+				TEXT("VibeUE endpoint self-probe FAILED: Epic's MCP server reports port %u, but settings/command line require port %u. Align the endpoint configuration and restart the editor."),
+				ReportedPort, ExpectedPort);
+			return false;
+		}
+
+		// GetHttpRouter(..., true) consults HTTPServer's listener owned by this process and returns
+		// null when its socket failed to bind/listen. A plain TCP connect cannot distinguish this
+		// editor from another process that inherited or squatted on the same port.
+		if (!FHttpServerModule::Get().GetHttpRouter(ExpectedPort, /*bFailOnBindFailure=*/true).IsValid())
+		{
+			UE_LOG(LogToolRegistry, Error,
+				TEXT("VibeUE endpoint self-probe FAILED: port %u is not listening in this UnrealEditor process. CrashReportClient may be squatting on an inherited MCP socket. Close the stale CrashReportClient/crash reporter, restart UnrealEditor, and verify that the configured port is owned by the new editor process."),
+				ExpectedPort);
+			return false;
+		}
+
+		UE_LOG(LogToolRegistry, Display,
+			TEXT("VibeUE endpoint self-probe passed: this UnrealEditor process is listening on port %u."),
+			ExpectedPort);
+		return false;
+	}
+
+	void ScheduleMCPListenerProbe()
+	{
+		if (GMCPListenerProbeTickerHandle.IsValid())
+		{
+			FTSTicker::RemoveTicker(GMCPListenerProbeTickerHandle);
+		}
+		GMCPListenerProbeTickerHandle = FTSTicker::GetCoreTicker().AddTicker(
+			TEXT("VibeUEMCPListenerProbe"), 0.0f,
+			[](float DeltaTime) { return ProbeMCPListenerOnNextTick(DeltaTime); });
+	}
 
 	bool FinishPIEBootstrapOnNextTick(float /*DeltaTime*/)
 	{
@@ -351,10 +407,17 @@ namespace VibeUEMCPToolBridge
 			GPIEPostStartedHandle = FEditorDelegates::PostPIEStarted.AddStatic(&MarkPIEBootstrapPostStarted);
 			GPIECancelHandle = FEditorDelegates::CancelPIE.AddStatic(&MarkPIEBootstrapCancelled);
 		}
+
+		ScheduleMCPListenerProbe();
 	}
 
 	void UnregisterAll()
 	{
+		if (GMCPListenerProbeTickerHandle.IsValid())
+		{
+			FTSTicker::RemoveTicker(GMCPListenerProbeTickerHandle);
+			GMCPListenerProbeTickerHandle.Reset();
+		}
 		CancelPendingPIEReadyTick();
 		GPIEBootstrapping.store(false, std::memory_order_release);
 
