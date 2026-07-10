@@ -29,6 +29,7 @@ namespace
 	FDelegateHandle GPIEBeginHandle;
 	FDelegateHandle GPIEPostStartedHandle;
 	FDelegateHandle GPIECancelHandle;
+	FDelegateHandle GPIEEndHandle;
 	FTSTicker::FDelegateHandle GPIEReadyTickerHandle;
 	FTSTicker::FDelegateHandle GMCPListenerProbeTickerHandle;
 
@@ -124,6 +125,11 @@ namespace
 	{
 		CancelPendingPIEReadyTick();
 		GPIEBootstrapping.store(false, std::memory_order_release);
+	}
+
+	void MarkPIEBootstrapEnded(bool /*bIsSimulating*/)
+	{
+		MarkPIEBootstrapCancelled();
 	}
 
 	bool IsPIEBootstrapping()
@@ -406,6 +412,7 @@ namespace VibeUEMCPToolBridge
 			GPIEBeginHandle = FEditorDelegates::BeginPIE.AddStatic(&MarkPIEBootstrapStarted);
 			GPIEPostStartedHandle = FEditorDelegates::PostPIEStarted.AddStatic(&MarkPIEBootstrapPostStarted);
 			GPIECancelHandle = FEditorDelegates::CancelPIE.AddStatic(&MarkPIEBootstrapCancelled);
+			GPIEEndHandle = FEditorDelegates::EndPIE.AddStatic(&MarkPIEBootstrapEnded);
 		}
 
 		ScheduleMCPListenerProbe();
@@ -425,10 +432,12 @@ namespace VibeUEMCPToolBridge
 		FEditorDelegates::BeginPIE.Remove(GPIEBeginHandle);
 		FEditorDelegates::PostPIEStarted.Remove(GPIEPostStartedHandle);
 		FEditorDelegates::CancelPIE.Remove(GPIECancelHandle);
+		FEditorDelegates::EndPIE.Remove(GPIEEndHandle);
 		GPIEStartHandle.Reset();
 		GPIEBeginHandle.Reset();
 		GPIEPostStartedHandle.Reset();
 		GPIECancelHandle.Reset();
+		GPIEEndHandle.Reset();
 
 		if (IModelContextProtocolModule* Module = IModelContextProtocolModule::Get())
 		{
