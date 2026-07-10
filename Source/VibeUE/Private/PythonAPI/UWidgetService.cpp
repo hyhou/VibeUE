@@ -1619,6 +1619,16 @@ FWidgetAddComponentResult UWidgetService::AddComponent(
 		ParentPanel = Cast<UPanelWidget>(WidgetBP->WidgetTree->RootWidget);
 	}
 
+	// Record the transaction before touching the persistent widget tree. Calling
+	// Modify() only after the write captures the new state instead of the undo
+	// snapshot; the Blueprint-aware helper below supplies the dirty signal.
+	WidgetBP->Modify();
+	WidgetBP->WidgetTree->Modify();
+	if (ParentPanel)
+	{
+		ParentPanel->Modify();
+	}
+
 	// Create the new widget
 	UWidget* NewWidget = WidgetBP->WidgetTree->ConstructWidget<UWidget>(WidgetClass, FName(*ComponentName));
 	if (!NewWidget)
@@ -1659,8 +1669,8 @@ FWidgetAddComponentResult UWidgetService::AddComponent(
 		return Result;
 	}
 
-	// Mark blueprint as modified and compile
-	WidgetBP->Modify();
+	// Every tree mutation goes through the same Blueprint-aware dirty path.
+	MarkWidgetBlueprintModified(WidgetBP, true);
 
 	if (bIsUserWidget)
 	{
@@ -1670,10 +1680,6 @@ FWidgetAddComponentResult UWidgetService::AddComponent(
 		// which would otherwise crash in Slate prepass with stack overflow.
 		UE_LOG(LogTemp, Log, TEXT("UWidgetService: Compiling parent WBP after adding UserWidget child '%s'"), *ComponentName);
 		FKismetEditorUtilities::CompileBlueprint(WidgetBP);
-	}
-	else
-	{
-		FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(WidgetBP);
 	}
 
 	Result.bSuccess = true;
@@ -1737,9 +1743,15 @@ FWidgetRemoveComponentResult UWidgetService::RemoveComponent(
 		}
 	}
 
+	// Record the transaction before removing anything from the persistent tree.
+	WidgetBP->Modify();
+	WidgetBP->WidgetTree->Modify();
+	WidgetToRemove->Modify();
+
 	// Remove from parent
 	if (UPanelWidget* Parent = WidgetToRemove->GetParent())
 	{
+		Parent->Modify();
 		Parent->RemoveChild(WidgetToRemove);
 	}
 
@@ -1747,9 +1759,7 @@ FWidgetRemoveComponentResult UWidgetService::RemoveComponent(
 	WidgetBP->WidgetTree->RemoveWidget(WidgetToRemove);
 	Result.RemovedComponents.Add(ComponentName);
 
-	// Mark blueprint as modified
-	WidgetBP->Modify();
-	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(WidgetBP);
+	MarkWidgetBlueprintModified(WidgetBP, true);
 
 	Result.bSuccess = true;
 	return Result;
@@ -1843,7 +1853,7 @@ FWidgetPromoteRootResult UWidgetService::PromoteChildToRoot(
 	WidgetBP->WidgetTree->RemoveWidget(OldRoot);
 
 	// Structural change: regenerates variables so the old root's member var goes away.
-	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(WidgetBP);
+	MarkWidgetBlueprintModified(WidgetBP, true);
 
 	Result.bSuccess = true;
 	Result.NewRootName = NewRoot->GetName();
@@ -2102,7 +2112,7 @@ bool UWidgetService::ReparentWidget(
 		return false;
 	}
 
-	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(WidgetBP);
+	MarkWidgetBlueprintModified(WidgetBP, true);
 	UE_LOG(LogTemp, Log, TEXT("UWidgetService::ReparentWidget: Moved '%s' under '%s'"), *WidgetName, *NewParentName);
 	return true;
 }
@@ -3440,7 +3450,7 @@ bool UWidgetService::BindEvent(
 		{
 			Widget->bIsVariable = true;
 		}
-		FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(WidgetBP);
+		MarkWidgetBlueprintModified(WidgetBP, true);
 		FKismetEditorUtilities::CompileBlueprint(WidgetBP);
 		VariableProperty = FindWidgetVarProp();
 	}
@@ -3504,7 +3514,7 @@ bool UWidgetService::BindEvent(
 	}
 
 	// 6. Persist and verify.
-	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(WidgetBP);
+	MarkWidgetBlueprintModified(WidgetBP, true);
 	FKismetEditorUtilities::CompileBlueprint(WidgetBP);
 
 	const bool bBound = FKismetEditorUtilities::FindBoundEventForComponent(WidgetBP, EventFName, VariableProperty->GetFName()) != nullptr;
@@ -3567,7 +3577,7 @@ bool UWidgetService::RenameWidget(
 	const FName NewFName(*NewName);
 	TargetWidget->Rename(*NewName, TargetWidget->GetOuter(), REN_DontCreateRedirectors);
 
-	FBlueprintEditorUtils::MarkBlueprintAsModified(WidgetBP);
+	MarkWidgetBlueprintModified(WidgetBP);
 
 	UE_LOG(LogTemp, Log, TEXT("UWidgetService::RenameWidget: Renamed '%s' to '%s' in '%s'"), *OldName, *NewName, *WidgetPath);
 	return true;
@@ -3899,7 +3909,7 @@ bool UWidgetService::AddViewModel(
 
 	// Mark as modified
 	WidgetBP->Modify();
-	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(WidgetBP);
+	MarkWidgetBlueprintModified(WidgetBP, true);
 
 	UE_LOG(LogTemp, Log, TEXT("UWidgetService::AddViewModel: Added ViewModel '%s' (class: %s) to '%s'"),
 		*ViewModelName, *ViewModelClassName, *WidgetPath);
@@ -3946,7 +3956,7 @@ bool UWidgetService::RemoveViewModel(
 	if (bRemoved)
 	{
 		WidgetBP->Modify();
-		FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(WidgetBP);
+		MarkWidgetBlueprintModified(WidgetBP, true);
 		UE_LOG(LogTemp, Log, TEXT("UWidgetService::RemoveViewModel: Removed ViewModel '%s' from '%s'"),
 			*ViewModelName, *WidgetPath);
 	}
@@ -4116,7 +4126,7 @@ bool UWidgetService::AddViewModelBinding(
 
 	// Mark as modified
 	WidgetBP->Modify();
-	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(WidgetBP);
+	MarkWidgetBlueprintModified(WidgetBP, true);
 
 	UE_LOG(LogTemp, Log, TEXT("UWidgetService::AddViewModelBinding: Created binding %s.%s -> %s.%s (%s)"),
 		*ViewModelName, *ViewModelProperty, *WidgetName, *WidgetProperty, *BindingMode);
@@ -4159,7 +4169,7 @@ bool UWidgetService::RemoveViewModelBinding(
 	View->RemoveBindingAt(BindingIndex);
 
 	WidgetBP->Modify();
-	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(WidgetBP);
+	MarkWidgetBlueprintModified(WidgetBP, true);
 
 	UE_LOG(LogTemp, Log, TEXT("UWidgetService::RemoveViewModelBinding: Removed binding at index %d"), BindingIndex);
 
@@ -4288,6 +4298,8 @@ bool UWidgetService::SetSlotInfo(
 
 	if (UCanvasPanelSlot* CanvasSlot = Cast<UCanvasPanelSlot>(Widget->Slot))
 	{
+		CanvasSlot->Modify();
+		Widget->Modify();
 		FAnchorData Layout;
 		Layout.Anchors.Minimum = SlotInfo.AnchorMin;
 		Layout.Anchors.Maximum = SlotInfo.AnchorMax;
@@ -4300,6 +4312,8 @@ bool UWidgetService::SetSlotInfo(
 	}
 	else if (UVerticalBoxSlot* VBoxSlot = Cast<UVerticalBoxSlot>(Widget->Slot))
 	{
+		VBoxSlot->Modify();
+		Widget->Modify();
 		FSlateChildSize Size;
 		Size.SizeRule = SlotInfo.SizeRule.Equals(TEXT("Fill"), ESearchCase::IgnoreCase)
 			? ESlateSizeRule::Fill : ESlateSizeRule::Automatic;
@@ -4312,6 +4326,8 @@ bool UWidgetService::SetSlotInfo(
 	}
 	else if (UHorizontalBoxSlot* HBoxSlot = Cast<UHorizontalBoxSlot>(Widget->Slot))
 	{
+		HBoxSlot->Modify();
+		Widget->Modify();
 		FSlateChildSize Size;
 		Size.SizeRule = SlotInfo.SizeRule.Equals(TEXT("Fill"), ESearchCase::IgnoreCase)
 			? ESlateSizeRule::Fill : ESlateSizeRule::Automatic;
@@ -4324,6 +4340,8 @@ bool UWidgetService::SetSlotInfo(
 	}
 	else if (UOverlaySlot* OverlaySlot = Cast<UOverlaySlot>(Widget->Slot))
 	{
+		OverlaySlot->Modify();
+		Widget->Modify();
 		OverlaySlot->SetPadding(SlotInfo.Padding);
 		OverlaySlot->SetHorizontalAlignment(SlotInfo.HorizontalAlignment);
 		OverlaySlot->SetVerticalAlignment(SlotInfo.VerticalAlignment);
@@ -4332,9 +4350,7 @@ bool UWidgetService::SetSlotInfo(
 
 	if (bApplied)
 	{
-		// Mark slot object + BP asset as modified so the change persists across save/compile.
-		Widget->Slot->Modify();
-		Widget->Modify();
+		// Mark the owning Blueprint after the slot write so save sees a dirty package.
 		MarkWidgetBlueprintModified(WidgetBP);
 	}
 	else

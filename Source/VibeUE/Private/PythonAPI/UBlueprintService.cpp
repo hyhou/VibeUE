@@ -4248,6 +4248,7 @@ bool UBlueprintService::RemoveTimeline(const FString& BlueprintPath, const FStri
 		FBlueprintEditorUtils::RemoveNode(Blueprint, TimelineNode, /*bDontRecompile*/true);
 	}
 	FBlueprintEditorUtils::RemoveTimeline(Blueprint, Template, /*bDontRecompile*/false);
+	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
 	UE_LOG(LogTemp, Log, TEXT("RemoveTimeline: Removed timeline '%s' from %s"), *TimelineName, *BlueprintPath);
 	return true;
 }
