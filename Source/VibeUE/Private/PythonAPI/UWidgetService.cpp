@@ -8,6 +8,8 @@
 #include "AssetRegistry/IAssetRegistry.h"
 #include "Blueprint/UserWidget.h"
 #include "Blueprint/WidgetTree.h"
+#include "Blueprint/GameViewportSubsystem.h"
+#include "Blueprint/WidgetLayoutLibrary.h"
 #include "Components/Widget.h"
 #include "Components/PanelWidget.h"
 #include "Components/CanvasPanelSlot.h"
@@ -72,6 +74,7 @@
 #include "Editor/EditorEngine.h"
 #include "Engine/Texture2D.h"
 #include "Engine/TextureRenderTarget2D.h"
+#include "Engine/GameViewportClient.h"
 #include "Fonts/SlateFontInfo.h"
 #include "Framework/Application/SlateApplication.h"
 #include "ImageCore.h"
@@ -3008,7 +3011,15 @@ namespace
 
 FPIEWidgetHandle UWidgetService::SpawnWidgetInPIE(
 	const FString& WidgetPath,
-	int32 ZOrder)
+	int32 ZOrder,
+	float PositionX,
+	float PositionY,
+	float AnchorMinX,
+	float AnchorMinY,
+	float AnchorMaxX,
+	float AnchorMaxY,
+	float AlignmentX,
+	float AlignmentY)
 {
 	FPIEWidgetHandle Result;
 
@@ -3065,7 +3076,96 @@ FPIEWidgetHandle UWidgetService::SpawnWidgetInPIE(
 		return Result;
 	}
 
-	WidgetInstance->AddToViewport(ZOrder);
+	const bool bAnyAnchorProvided = !FMath::IsNearlyEqual(AnchorMinX, -1.0f)
+		|| !FMath::IsNearlyEqual(AnchorMinY, -1.0f)
+		|| !FMath::IsNearlyEqual(AnchorMaxX, -1.0f)
+		|| !FMath::IsNearlyEqual(AnchorMaxY, -1.0f);
+	const bool bAllAnchorsValid = FMath::IsWithinInclusive(AnchorMinX, 0.0f, 1.0f)
+		&& FMath::IsWithinInclusive(AnchorMinY, 0.0f, 1.0f)
+		&& FMath::IsWithinInclusive(AnchorMaxX, 0.0f, 1.0f)
+		&& FMath::IsWithinInclusive(AnchorMaxY, 0.0f, 1.0f);
+	if (bAnyAnchorProvided && !bAllAnchorsValid)
+	{
+		Result.ErrorMessage = TEXT("Explicit anchors require anchor_min_x/y and anchor_max_x/y, each in [0,1]. Omit all four for the centered desired-size default.");
+		return Result;
+	}
+
+	const bool bAnyAlignmentProvided = !FMath::IsNearlyEqual(AlignmentX, -1.0f)
+		|| !FMath::IsNearlyEqual(AlignmentY, -1.0f);
+	const bool bAllAlignmentValid = FMath::IsWithinInclusive(AlignmentX, 0.0f, 1.0f)
+		&& FMath::IsWithinInclusive(AlignmentY, 0.0f, 1.0f);
+	if (bAnyAlignmentProvided && !bAllAlignmentValid)
+	{
+		Result.ErrorMessage = TEXT("Explicit alignment requires alignment_x and alignment_y, each in [0,1]. Omit both for centered alignment.");
+		return Result;
+	}
+
+	const FVector2D AnchorMin = bAnyAnchorProvided ? FVector2D(AnchorMinX, AnchorMinY) : FVector2D(0.5f, 0.5f);
+	const FVector2D AnchorMax = bAnyAnchorProvided ? FVector2D(AnchorMaxX, AnchorMaxY) : FVector2D(0.5f, 0.5f);
+	if (AnchorMin.X > AnchorMax.X || AnchorMin.Y > AnchorMax.Y)
+	{
+		Result.ErrorMessage = TEXT("anchor_min must be less than or equal to anchor_max on both axes.");
+		return Result;
+	}
+	const FVector2D Alignment = bAnyAlignmentProvided ? FVector2D(AlignmentX, AlignmentY) : FVector2D(0.5f, 0.5f);
+	const bool bStretchX = !FMath::IsNearlyEqual(AnchorMin.X, AnchorMax.X);
+	const bool bStretchY = !FMath::IsNearlyEqual(AnchorMin.Y, AnchorMax.Y);
+
+	UGameViewportSubsystem* ViewportSubsystem = UGameViewportSubsystem::Get();
+	if (!ViewportSubsystem)
+	{
+		Result.ErrorMessage = TEXT("Game viewport subsystem is unavailable.");
+		return Result;
+	}
+
+	FGameViewportWidgetSlot ViewportSlot;
+	ViewportSlot.Anchors = FAnchors(AnchorMin.X, AnchorMin.Y, AnchorMax.X, AnchorMax.Y);
+	ViewportSlot.Alignment = Alignment;
+	ViewportSlot.Offsets = FMargin(PositionX, PositionY, 0.0f, 0.0f);
+	ViewportSlot.ZOrder = ZOrder;
+	if (!ViewportSubsystem->AddWidget(WidgetInstance, ViewportSlot))
+	{
+		Result.ErrorMessage = TEXT("Failed to add PIE widget instance to the game viewport.");
+		return Result;
+	}
+
+	WidgetInstance->ForceLayoutPrepass();
+	Result.DesiredSize = WidgetInstance->GetDesiredSize();
+
+	// Slate's viewport slot has one AutoSize bit for both axes. With a partial stretch that bit is
+	// disabled globally, so preserve desired size explicitly on each non-stretched axis while
+	// leaving the stretched axis' far offset at zero. DesiredSize becomes reliable only after the
+	// widget has joined the viewport and completed its layout prepass.
+	const bool bAnyStretch = bStretchX || bStretchY;
+	if (bAnyStretch && (!bStretchX || !bStretchY))
+	{
+		ViewportSlot.Offsets.Right = bStretchX ? 0.0f : Result.DesiredSize.X;
+		ViewportSlot.Offsets.Bottom = bStretchY ? 0.0f : Result.DesiredSize.Y;
+		ViewportSubsystem->SetWidgetSlot(WidgetInstance, ViewportSlot);
+	}
+
+	Result.AnchorMin = AnchorMin;
+	Result.AnchorMax = AnchorMax;
+	Result.Alignment = Alignment;
+
+	FVector2D RawViewportSize = FVector2D::ZeroVector;
+	if (UGameViewportClient* ViewportClient = PlayWorld->GetGameViewport())
+	{
+		ViewportClient->GetViewportSize(RawViewportSize);
+	}
+	const float ViewportScale = FMath::Max(UWidgetLayoutLibrary::GetViewportScale(WidgetInstance), UE_SMALL_NUMBER);
+	const FVector2D LogicalViewportSize = RawViewportSize / ViewportScale;
+
+	Result.FinalViewportSize.X = bStretchX
+		? AnchorMax.X * LogicalViewportSize.X - (AnchorMin.X * LogicalViewportSize.X + PositionX)
+		: Result.DesiredSize.X;
+	Result.FinalViewportSize.Y = bStretchY
+		? AnchorMax.Y * LogicalViewportSize.Y - (AnchorMin.Y * LogicalViewportSize.Y + PositionY)
+		: Result.DesiredSize.Y;
+	Result.FinalViewportPosition.X = AnchorMin.X * LogicalViewportSize.X + PositionX
+		- (bStretchX ? 0.0f : Result.FinalViewportSize.X * Alignment.X);
+	Result.FinalViewportPosition.Y = AnchorMin.Y * LogicalViewportSize.Y + PositionY
+		- (bStretchY ? 0.0f : Result.FinalViewportSize.Y * Alignment.Y);
 
 	Result.bValid = true;
 	Result.InstanceId = FGuid::NewGuid().ToString(EGuidFormats::DigitsWithHyphens);

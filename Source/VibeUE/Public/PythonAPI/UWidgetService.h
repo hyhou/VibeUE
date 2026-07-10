@@ -454,6 +454,27 @@ struct FPIEWidgetHandle
 	UPROPERTY(BlueprintReadWrite, Category = "Widget|PIE")
 	FString InstanceId;
 
+	/** Widget desired size after a forced layout prepass. */
+	UPROPERTY(BlueprintReadWrite, Category = "Widget|PIE")
+	FVector2D DesiredSize = FVector2D::ZeroVector;
+
+	/** Final widget position in logical viewport units, computed from the applied viewport slot. */
+	UPROPERTY(BlueprintReadWrite, Category = "Widget|PIE")
+	FVector2D FinalViewportPosition = FVector2D::ZeroVector;
+
+	/** Final widget size in logical viewport units, computed from the applied viewport slot. */
+	UPROPERTY(BlueprintReadWrite, Category = "Widget|PIE")
+	FVector2D FinalViewportSize = FVector2D::ZeroVector;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Widget|PIE")
+	FVector2D AnchorMin = FVector2D::ZeroVector;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Widget|PIE")
+	FVector2D AnchorMax = FVector2D::ZeroVector;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Widget|PIE")
+	FVector2D Alignment = FVector2D::ZeroVector;
+
 	UPROPERTY(BlueprintReadWrite, Category = "Widget|PIE")
 	FString ErrorMessage;
 };
@@ -973,13 +994,24 @@ public:
 	static bool IsPIERunning();
 
 	/**
-	 * Spawn a widget into the PIE viewport.
+	 * Spawn a widget into the PIE viewport. By default the viewport slot is desired-size,
+	 * centered at anchor (0.5, 0.5), instead of AddToViewport's full-screen stretch slot.
+	 * Pass all four anchor coordinates to override the default; a stretched anchor range uses
+	 * the corresponding viewport span. Position is an offset from the selected anchor origin.
 	 * Maps to action="spawn_widget_in_pie"
 	 */
 	UFUNCTION(BlueprintCallable, meta = (AICallable), Category = "VibeUE|Widgets|PIE")
 	static FPIEWidgetHandle SpawnWidgetInPIE(
 		const FString& WidgetPath,
-		int32 ZOrder = 0);
+		int32 ZOrder = 0,
+		float PositionX = 0.0f,
+		float PositionY = 0.0f,
+		float AnchorMinX = -1.0f,
+		float AnchorMinY = -1.0f,
+		float AnchorMaxX = -1.0f,
+		float AnchorMaxY = -1.0f,
+		float AlignmentX = -1.0f,
+		float AlignmentY = -1.0f);
 
 	/**
 	 * Read a property from a live PIE widget instance.

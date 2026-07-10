@@ -135,13 +135,21 @@ argument**; the PNG is written to `<project>/Saved/WidgetPreviews/<WidgetName>.p
 
 ## PIEWidgetHandle
 
-Returned by `spawn_widget_in_pie(widget_path, z_order=0)`. Pass the **whole handle object** to
+Returned by `spawn_widget_in_pie(widget_path, z_order=0, position_x=0, position_y=0, ...)`.
+The default slot uses centered point anchors and the widget's desired size. Pass all four
+`anchor_min_x`, `anchor_min_y`, `anchor_max_x`, and `anchor_max_y` values to override it; optional
+`alignment_x/y` override the centered alignment. Pass the **whole handle object** to
 `get_live_property(handle, component_name, property_name)` and `remove_widget_from_pie(handle)`.
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `valid` | bool | True when the PIE widget instance was spawned (**not** `b_valid`) |
 | `instance_id` | str | Stable ID string (informational) |
+| `desired_size` | Vector2D | Widget desired size after layout prepass |
+| `final_viewport_position` | Vector2D | Final top-left in logical viewport units |
+| `final_viewport_size` | Vector2D | Final size in logical viewport units (desired size unless an axis is explicitly stretched) |
+| `anchor_min` / `anchor_max` | Vector2D | Applied viewport anchors |
+| `alignment` | Vector2D | Applied pivot/alignment |
 | `error_message` | str | Failure message when spawn fails (e.g. "PIE is not running.") |
 
 ## WidgetAddComponentResult / WidgetEventInfo
@@ -187,7 +195,7 @@ Returned by `spawn_widget_in_pie(widget_path, z_order=0)`. Pass the **whole hand
 | `list_animations` / `remove_animation` | Manage widget animations |
 | `capture_preview` | `(widget_path, width=1920, height=1080)` → WidgetPreviewResult (no path arg) |
 | `is_pie_running` / `start_pie` / `stop_pie` | PIE lifecycle (`start_pie` is async) |
-| `spawn_widget_in_pie` | `(widget_path, z_order=0)` → PIEWidgetHandle |
+| `spawn_widget_in_pie` | `(widget_path, z_order=0, position_x/y=0, anchor_min_x/y=-1, anchor_max_x/y=-1, alignment_x/y=-1)` → PIEWidgetHandle; omitted anchors mean centered desired-size |
 | `get_live_property` | `(handle, component_name, property_name)` → str |
 | `remove_widget_from_pie` | `(handle)` → bool |
 | `add_view_model` / `list_view_models` / `remove_view_model` | MVVM ViewModels (see `mvvm.md`) |

@@ -75,6 +75,7 @@ import unreal
 
 # After StartPIE, spawn a widget instance into the running viewport
 handle = unreal.WidgetService.spawn_widget_in_pie("/Game/UI/WBP_HUD", 0)
+print(handle.desired_size, handle.final_viewport_position, handle.final_viewport_size)
 
 # Read a live property off the running instance
 val = unreal.WidgetService.get_live_property(handle, "HealthText", "Text")
@@ -90,6 +91,10 @@ hits = unreal.WidgetService.find_live_widgets("WBP_HUD")  # class name, /Game pa
 # empty component name targets the instance itself, or pass a child widget name
 val = unreal.WidgetService.get_live_widget_property(hits[0].object_path, "Visibility")
 ```
+
+The spawn helper now defaults to centered desired-size geometry and returns the applied geometry
+on the handle. Do not add a separate anchor mutation/readback step. Explicit anchors still override
+the default when all four `anchor_min_*` / `anchor_max_*` coordinates are supplied.
 
 Both live-widget calls reject `Default__` object paths and `REINST_*` classes by default. That
 filter is part of the evidence contract, not a caller-side cleanup step. Use

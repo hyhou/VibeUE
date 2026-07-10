@@ -120,6 +120,12 @@ then the track, then keyframes. (Runnable: `scripts/create_animation.txt`.)
 - `start_pie` + `spawn_widget_in_pie` are for runtime state / live property reads — use only when you
   need a live instance.
 
+`spawn_widget_in_pie` defaults to the widget's desired size at centered anchors instead of the
+engine's full-screen stretch slot. Its handle already contains `desired_size`,
+`final_viewport_position`, `final_viewport_size`, anchors, and alignment; use those fields as the
+spawn geometry evidence. Pass all four `anchor_min_*` / `anchor_max_*` values only when you
+intentionally want to override the centered desired-size default.
+
 `find_live_widgets` and `get_live_widget_property` exclude stale reinstance objects by default:
 object paths containing `Default__` and classes named `REINST_*` are not live evidence. Pass
 `include_zombies=True` only when diagnosing reinstance state (and `live_only=False` as well if you

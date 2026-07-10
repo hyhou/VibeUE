@@ -259,6 +259,9 @@ if not ws.is_pie_running():
 # Step 2 (after PIE is live):
 handle = ws.spawn_widget_in_pie(path)
 print(handle.valid, handle.instance_id, handle.error_message)
+print("desired", handle.desired_size,
+      "final", handle.final_viewport_position, handle.final_viewport_size,
+      "anchors", handle.anchor_min, handle.anchor_max)
 if handle.valid:
     live = ws.get_live_property(handle, "HeaderTitle", "RenderOpacity")
     print(live)
@@ -267,3 +270,14 @@ ws.stop_pie()
 ```
 
 Runnable: `scripts/pie_inspect.txt`.
+
+The default spawn is desired-size and centered; no follow-up anchor mutation/readback is needed.
+To explicitly restore stretch semantics, pass all four anchor coordinates, for example:
+
+```python
+full_screen = ws.spawn_widget_in_pie(
+    path, 0, 0, 0,
+    anchor_min_x=0, anchor_min_y=0,
+    anchor_max_x=1, anchor_max_y=1)
+print(full_screen.final_viewport_size)
+```
