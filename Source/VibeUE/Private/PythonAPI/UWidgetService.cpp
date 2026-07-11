@@ -57,6 +57,7 @@
 #include "Components/NativeWidgetHost.h"
 #include "Widgets/CommonActivatableWidgetContainer.h"
 #include "Components/PanelSlot.h"
+#include "Components/NamedSlotInterface.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/KismetEditorUtilities.h"
 #include "K2Node_ComponentBoundEvent.h"
@@ -82,6 +83,7 @@
 #include "Materials/MaterialInterface.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
+#include "ScopedTransaction.h"
 #include "MovieScene.h"
 #include "MovieSceneBinding.h"
 #include "PlayInEditorDataTypes.h"
@@ -108,6 +110,10 @@
 #include "Engine/EngineTypes.h"
 #include "UObject/UObjectIterator.h"
 #include "UObject/UObjectGlobals.h"
+
+#if WITH_DEV_AUTOMATION_TESTS
+#include "Misc/AutomationTest.h"
+#endif
 
 // Static list of available widget types
 static const TArray<FString> GAvailableWidgetTypes = {
@@ -1150,7 +1156,14 @@ UWidgetBlueprint* UWidgetService::LoadWidgetBlueprint(const FString& WidgetPath)
 		return nullptr;
 	}
 
-	UWidgetBlueprint* WidgetBP = Cast<UWidgetBlueprint>(UEditorAssetLibrary::LoadAsset(WidgetPath));
+	// Automation and editor scripting may pass an already-resident transient
+	// WidgetBlueprint object path. Resolve it before EditorAssetLibrary so a valid
+	// in-memory probe does not emit a misleading "not a valid asset" error.
+	UWidgetBlueprint* WidgetBP = FindObject<UWidgetBlueprint>(nullptr, *WidgetPath);
+	if (!WidgetBP)
+	{
+		WidgetBP = Cast<UWidgetBlueprint>(UEditorAssetLibrary::LoadAsset(WidgetPath));
+	}
 	if (!WidgetBP)
 	{
 		// Fallback when UEditorAssetLibrary fails but the asset is already resident (e.g. loaded via StaticFindObject / Python load_asset).
@@ -1403,6 +1416,39 @@ TArray<FWidgetInfo> UWidgetService::GetHierarchy(const FString& WidgetPath)
 		}
 	}
 
+	// Named-slot content belongs to the consumer WidgetTree but its runtime/design
+	// panel parent lives inside the foreign UserWidget tree. Record the logical host
+	// relationship explicitly so readback identifies Instance.Slot rather than
+	// reporting the content as an unexplained orphan.
+	for (UWidget* HostWidget : AllWidgets)
+	{
+		INamedSlotInterface* NamedSlotHost = Cast<INamedSlotInterface>(HostWidget);
+		if (!HostWidget || !NamedSlotHost)
+		{
+			continue;
+		}
+
+		TArray<FName> SlotNames;
+		NamedSlotHost->GetSlotNames(SlotNames);
+		for (const FName SlotName : SlotNames)
+		{
+			UWidget* Content = NamedSlotHost->GetContentForSlot(SlotName);
+			if (!Content)
+			{
+				continue;
+			}
+
+			if (FWidgetInfo* ContentInfo = InfoMap.Find(Content->GetName()))
+			{
+				ContentInfo->ParentWidget = FString::Printf(TEXT("%s.%s"), *HostWidget->GetName(), *SlotName.ToString());
+			}
+			if (FWidgetInfo* HostInfo = InfoMap.Find(HostWidget->GetName()))
+			{
+				HostInfo->Children.AddUnique(Content->GetName());
+			}
+		}
+	}
+
 	// Emit in depth-first order starting from root so callers get a sensible hierarchy
 	TFunction<void(const FString&)> EmitDepthFirst;
 	EmitDepthFirst = [&](const FString& Name)
@@ -1506,6 +1552,35 @@ TArray<FWidgetInfo> UWidgetService::ListComponents(const FString& WidgetPath)
 		}
 	}
 
+	for (UWidget* HostWidget : AllWidgets)
+	{
+		INamedSlotInterface* NamedSlotHost = Cast<INamedSlotInterface>(HostWidget);
+		if (!HostWidget || !NamedSlotHost)
+		{
+			continue;
+		}
+
+		TArray<FName> SlotNames;
+		NamedSlotHost->GetSlotNames(SlotNames);
+		for (const FName SlotName : SlotNames)
+		{
+			UWidget* Content = NamedSlotHost->GetContentForSlot(SlotName);
+			if (!Content)
+			{
+				continue;
+			}
+
+			if (FWidgetInfo* ContentInfo = InfoMapLC.Find(Content->GetName()))
+			{
+				ContentInfo->ParentWidget = FString::Printf(TEXT("%s.%s"), *HostWidget->GetName(), *SlotName.ToString());
+			}
+			if (FWidgetInfo* HostInfo = InfoMapLC.Find(HostWidget->GetName()))
+			{
+				HostInfo->Children.AddUnique(Content->GetName());
+			}
+		}
+	}
+
 	for (auto& Pair : InfoMapLC)
 	{
 		Components.Add(Pair.Value);
@@ -1579,6 +1654,18 @@ FWidgetAddComponentResult UWidgetService::AddComponent(
 		return Result;
 	}
 
+	if (ComponentName.IsEmpty())
+	{
+		Result.ErrorMessage = TEXT("ComponentName must not be empty");
+		return Result;
+	}
+
+	if (FindWidgetByName(WidgetBP, ComponentName))
+	{
+		Result.ErrorMessage = FString::Printf(TEXT("A widget named '%s' already exists in '%s'"), *ComponentName, *WidgetPath);
+		return Result;
+	}
+
 	// Find the widget class
 	TSubclassOf<UWidget> WidgetClass = FindWidgetClass(ComponentType);
 	if (!WidgetClass)
@@ -1609,10 +1696,40 @@ FWidgetAddComponentResult UWidgetService::AddComponent(
 	if (!ParentName.IsEmpty())
 	{
 		UWidget* ParentWidget = FindWidgetByName(WidgetBP, ParentName);
+		if (!ParentWidget)
+		{
+			Result.ErrorMessage = FString::Printf(TEXT("Parent '%s' was not found in '%s'"), *ParentName, *WidgetPath);
+			return Result;
+		}
 		ParentPanel = Cast<UPanelWidget>(ParentWidget);
 		if (!ParentPanel)
 		{
-			Result.ErrorMessage = FString::Printf(TEXT("Parent '%s' not found or is not a panel widget"), *ParentName);
+			if (INamedSlotInterface* NamedSlotHost = Cast<INamedSlotInterface>(ParentWidget))
+			{
+				TArray<FName> SlotNames;
+				NamedSlotHost->GetSlotNames(SlotNames);
+				TArray<FString> SlotStrings;
+				for (const FName AvailableSlot : SlotNames)
+				{
+					SlotStrings.Add(AvailableSlot.ToString());
+				}
+				Result.ErrorMessage = FString::Printf(
+					TEXT("Parent '%s' is a named-slot host, not a panel widget. Use set_named_slot_content(widget_path, '%s', slot_name, ...) instead. Available slots: [%s]"),
+					*ParentName, *ParentName, *FString::Join(SlotStrings, TEXT(", ")));
+			}
+			else
+			{
+				Result.ErrorMessage = FString::Printf(
+					TEXT("Parent '%s' is a %s and cannot contain child widgets; add_component requires a panel parent"),
+					*ParentName, *ParentWidget->GetClass()->GetName());
+			}
+			return Result;
+		}
+		if (!ParentPanel->CanAddMoreChildren())
+		{
+			Result.ErrorMessage = FString::Printf(
+				TEXT("Parent '%s' (%s) cannot accept another child"),
+				*ParentName, *ParentPanel->GetClass()->GetName());
 			return Result;
 		}
 	}
@@ -1690,6 +1807,141 @@ FWidgetAddComponentResult UWidgetService::AddComponent(
 	Result.ComponentType = ComponentType;
 	Result.bIsVariable = bIsVariable;
 
+	return Result;
+}
+
+FWidgetAddComponentResult UWidgetService::SetNamedSlotContent(
+	const FString& WidgetPath,
+	const FString& InstanceName,
+	const FString& SlotName,
+	const FString& ComponentType,
+	const FString& ComponentName,
+	bool bIsVariable)
+{
+	FWidgetAddComponentResult Result;
+	Result.ParentName = FString::Printf(TEXT("%s.%s"), *InstanceName, *SlotName);
+
+	UWidgetBlueprint* WidgetBP = LoadWidgetBlueprint(WidgetPath);
+	if (!WidgetBP)
+	{
+		Result.ErrorMessage = FString::Printf(TEXT("Widget Blueprint '%s' not found"), *WidgetPath);
+		return Result;
+	}
+	if (!WidgetBP->WidgetTree)
+	{
+		Result.ErrorMessage = TEXT("Widget Blueprint has no WidgetTree");
+		return Result;
+	}
+	if (InstanceName.IsEmpty() || SlotName.IsEmpty() || ComponentName.IsEmpty())
+	{
+		Result.ErrorMessage = TEXT("InstanceName, SlotName, and ComponentName must not be empty");
+		return Result;
+	}
+	if (FindWidgetByName(WidgetBP, ComponentName))
+	{
+		Result.ErrorMessage = FString::Printf(TEXT("A widget named '%s' already exists in '%s'"), *ComponentName, *WidgetPath);
+		return Result;
+	}
+
+	UWidget* HostWidget = FindWidgetByName(WidgetBP, InstanceName);
+	if (!HostWidget)
+	{
+		Result.ErrorMessage = FString::Printf(TEXT("Named-slot host instance '%s' was not found in '%s'"), *InstanceName, *WidgetPath);
+		return Result;
+	}
+
+	INamedSlotInterface* NamedSlotHost = Cast<INamedSlotInterface>(HostWidget);
+	if (!NamedSlotHost)
+	{
+		Result.ErrorMessage = FString::Printf(
+			TEXT("Widget '%s' is a %s and does not implement INamedSlotInterface"),
+			*InstanceName, *HostWidget->GetClass()->GetName());
+		return Result;
+	}
+
+	TArray<FName> AvailableSlots;
+	NamedSlotHost->GetSlotNames(AvailableSlots);
+	const FName RequestedSlot(*SlotName);
+	if (!AvailableSlots.Contains(RequestedSlot))
+	{
+		TArray<FString> SlotStrings;
+		for (const FName AvailableSlot : AvailableSlots)
+		{
+			SlotStrings.Add(AvailableSlot.ToString());
+		}
+		Result.ErrorMessage = FString::Printf(
+			TEXT("Named slot '%s' does not exist on '%s'. Available slots: [%s]"),
+			*SlotName, *InstanceName, *FString::Join(SlotStrings, TEXT(", ")));
+		return Result;
+	}
+	if (UWidget* ExistingContent = NamedSlotHost->GetContentForSlot(RequestedSlot))
+	{
+		Result.ErrorMessage = FString::Printf(
+			TEXT("Named slot '%s.%s' already contains '%s'; refusing to replace existing content"),
+			*InstanceName, *SlotName, *ExistingContent->GetName());
+		return Result;
+	}
+
+	TSubclassOf<UWidget> WidgetClass = FindWidgetClass(ComponentType);
+	if (!WidgetClass)
+	{
+		Result.ErrorMessage = FString::Printf(TEXT("Unknown widget type '%s'. Use search_types() to get available types, or list_widget_blueprints() for custom WBPs."), *ComponentType);
+		return Result;
+	}
+
+	const bool bIsUserWidget = WidgetClass->IsChildOf(UUserWidget::StaticClass());
+	if (bIsUserWidget && WidgetBP->GeneratedClass &&
+		(WidgetClass == WidgetBP->GeneratedClass || WidgetClass->IsChildOf(WidgetBP->GeneratedClass)))
+	{
+		Result.ErrorMessage = FString::Printf(
+			TEXT("Cannot add '%s': circular reference detected. A Widget Blueprint cannot contain itself as named-slot content."),
+			*ComponentType);
+		return Result;
+	}
+
+	const FScopedTransaction Transaction(NSLOCTEXT("VibeUE", "SetNamedSlotContent", "Set Named Slot Content"));
+	WidgetBP->SetFlags(RF_Transactional);
+	WidgetBP->Modify();
+	WidgetBP->WidgetTree->SetFlags(RF_Transactional);
+	WidgetBP->WidgetTree->Modify();
+	HostWidget->SetFlags(RF_Transactional);
+	HostWidget->Modify();
+
+	UWidget* NewWidget = WidgetBP->WidgetTree->ConstructWidget<UWidget>(WidgetClass, FName(*ComponentName));
+	if (!NewWidget)
+	{
+		Result.ErrorMessage = FString::Printf(TEXT("Failed to create widget of type '%s'"), *ComponentType);
+		return Result;
+	}
+	NewWidget->SetFlags(RF_Transactional);
+	NewWidget->Modify();
+	NewWidget->bIsVariable = bIsVariable;
+
+	NamedSlotHost->SetContentForSlot(RequestedSlot, NewWidget);
+	if (NamedSlotHost->GetContentForSlot(RequestedSlot) != NewWidget)
+	{
+		WidgetBP->WidgetTree->RemoveWidget(NewWidget);
+		Result.ErrorMessage = FString::Printf(
+			TEXT("Named-slot host '%s' rejected content for slot '%s'"), *InstanceName, *SlotName);
+		return Result;
+	}
+
+	const FName WidgetFName = NewWidget->GetFName();
+	if (!WidgetBP->WidgetVariableNameToGuidMap.Contains(WidgetFName))
+	{
+		WidgetBP->WidgetVariableNameToGuidMap.Add(WidgetFName, FGuid::NewGuid());
+	}
+
+	MarkWidgetBlueprintModified(WidgetBP, true);
+	if (bIsUserWidget)
+	{
+		FKismetEditorUtilities::CompileBlueprint(WidgetBP);
+	}
+
+	Result.bSuccess = true;
+	Result.ComponentName = NewWidget->GetName();
+	Result.ComponentType = ComponentType;
+	Result.bIsVariable = bIsVariable;
 	return Result;
 }
 
@@ -4626,3 +4878,33 @@ FWidgetComponentSnapshot UWidgetService::GetComponentSnapshot(const FString& Wid
 
 	return Snapshot;
 }
+
+#if WITH_DEV_AUTOMATION_TESTS
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FWidgetServiceRejectsInvalidParentTest,
+	"VibeUE.WidgetService.AddComponent.RejectsInvalidParent",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FWidgetServiceRejectsInvalidParentTest::RunTest(const FString& Parameters)
+{
+	const FString PackageName = FString::Printf(TEXT("/Temp/VibeUE_InvalidParent_%s"), *FGuid::NewGuid().ToString(EGuidFormats::Digits));
+	UPackage* Package = CreatePackage(*PackageName);
+	Package->SetFlags(RF_Transient);
+	UWidgetBlueprint* WidgetBP = NewObject<UWidgetBlueprint>(
+		Package, TEXT("WBP_InvalidParentProbe"), RF_Public | RF_Standalone | RF_Transient);
+	WidgetBP->WidgetTree = NewObject<UWidgetTree>(WidgetBP, TEXT("WidgetTree"), RF_Transactional | RF_Transient);
+	UTextBlock* NonPanelRoot = WidgetBP->WidgetTree->ConstructWidget<UTextBlock>(
+		UTextBlock::StaticClass(), TEXT("NonPanelRoot"));
+	WidgetBP->WidgetTree->RootWidget = NonPanelRoot;
+
+	const FWidgetAddComponentResult Result = UWidgetService::AddComponent(
+		WidgetBP->GetPathName(), TEXT("Button"), TEXT("UnsafeChild"), TEXT("NonPanelRoot"), true);
+
+	TestFalse(TEXT("invalid non-panel parent is rejected"), Result.bSuccess);
+	TestTrue(
+		TEXT("invalid parent error explains that the widget cannot contain children"),
+		Result.ErrorMessage.Contains(TEXT("cannot contain child widgets")));
+	TestNull(TEXT("rejected child was never constructed"), WidgetBP->WidgetTree->FindWidget(TEXT("UnsafeChild")));
+	return true;
+}
+#endif

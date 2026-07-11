@@ -695,6 +695,29 @@ public:
 		bool bIsVariable = true);
 
 	/**
+	 * Create a widget and attach it to a named slot exposed by a UserWidget instance.
+	 * Maps to action="set_named_slot_content".
+	 * The slot must exist and be empty. Use InstanceName + SlotName rather than passing
+	 * a UserWidget instance to add_component(), which only accepts panel parents.
+	 *
+	 * @param WidgetPath - Full path to the consumer Widget Blueprint
+	 * @param InstanceName - Name of the named-slot host widget instance in the consumer tree
+	 * @param SlotName - Exposed named slot on the instance
+	 * @param ComponentType - Native widget type or custom Widget Blueprint asset name
+	 * @param ComponentName - Name for the newly-created slot content
+	 * @param bIsVariable - Whether to expose the content as a variable
+	 * @return Result with success status and an actionable error on invalid host/slot/content
+	 */
+	UFUNCTION(BlueprintCallable, meta = (AICallable), Category = "VibeUE|Widgets")
+	static FWidgetAddComponentResult SetNamedSlotContent(
+		const FString& WidgetPath,
+		const FString& InstanceName,
+		const FString& SlotName,
+		const FString& ComponentType,
+		const FString& ComponentName,
+		bool bIsVariable = true);
+
+	/**
 	 * Remove a widget component from a Widget Blueprint.
 	 * Maps to action="remove_component"
 	 *
