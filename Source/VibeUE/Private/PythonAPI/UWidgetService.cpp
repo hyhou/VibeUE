@@ -21,6 +21,7 @@
 #include "Components/Overlay.h"
 #include "Components/OverlaySlot.h"
 #include "Components/ScrollBox.h"
+#include "Components/ScrollBoxSlot.h"
 #include "Components/GridPanel.h"
 #include "Components/WidgetSwitcher.h"
 #include "Components/TextBlock.h"
@@ -40,6 +41,7 @@
 #include "Components/InputKeySelector.h"
 #include "Components/Border.h"
 #include "Components/SizeBox.h"
+#include "Components/SizeBoxSlot.h"
 #include "Components/ScaleBox.h"
 #include "Components/BackgroundBlur.h"
 #include "Components/SafeZone.h"
@@ -2015,6 +2017,17 @@ FWidgetRemoveComponentResult UWidgetService::RemoveComponent(
 	Result.RemovedComponents.Add(ComponentName);
 
 	MarkWidgetBlueprintModified(WidgetBP, true);
+
+	// UMG keeps a persistent variable-name -> GUID map outside WidgetTree. Leaving
+	// entries behind after deleting bIsVariable widgets makes the next cold load
+	// hit WidgetBlueprintCompiler::ValidateAndFixUpVariableGuids with
+	// "Variable [...] was deleted but still has a GUID". Structural modification
+	// can rebuild variable metadata, so remove through UWidgetBlueprint's native
+	// hook after that step and keep the persisted stores atomic.
+	for (const FString& RemovedComponent : Result.RemovedComponents)
+	{
+		WidgetBP->OnVariableRemoved(FName(*RemovedComponent));
+	}
 
 	Result.bSuccess = true;
 	return Result;
@@ -4645,6 +4658,20 @@ FWidgetSlotInfo UWidgetService::BuildSlotInfo(UWidget* Widget)
 		SlotInfo.HorizontalAlignment = OverlaySlot->GetHorizontalAlignment();
 		SlotInfo.VerticalAlignment = OverlaySlot->GetVerticalAlignment();
 	}
+	else if (USizeBoxSlot* SizeBoxSlot = Cast<USizeBoxSlot>(Widget->Slot))
+	{
+		SlotInfo.SlotType = TEXT("SizeBox");
+		SlotInfo.Padding = SizeBoxSlot->GetPadding();
+		SlotInfo.HorizontalAlignment = SizeBoxSlot->GetHorizontalAlignment();
+		SlotInfo.VerticalAlignment = SizeBoxSlot->GetVerticalAlignment();
+	}
+	else if (UScrollBoxSlot* ScrollBoxSlot = Cast<UScrollBoxSlot>(Widget->Slot))
+	{
+		SlotInfo.SlotType = TEXT("ScrollBox");
+		SlotInfo.Padding = ScrollBoxSlot->GetPadding();
+		SlotInfo.HorizontalAlignment = ScrollBoxSlot->GetHorizontalAlignment();
+		SlotInfo.VerticalAlignment = ScrollBoxSlot->GetVerticalAlignment();
+	}
 	else
 	{
 		// Unknown slot type — store class name so caller knows what it is
@@ -4731,6 +4758,24 @@ bool UWidgetService::SetSlotInfo(
 		OverlaySlot->SetPadding(SlotInfo.Padding);
 		OverlaySlot->SetHorizontalAlignment(SlotInfo.HorizontalAlignment);
 		OverlaySlot->SetVerticalAlignment(SlotInfo.VerticalAlignment);
+		bApplied = true;
+	}
+	else if (USizeBoxSlot* SizeBoxSlot = Cast<USizeBoxSlot>(Widget->Slot))
+	{
+		SizeBoxSlot->Modify();
+		Widget->Modify();
+		SizeBoxSlot->SetPadding(SlotInfo.Padding);
+		SizeBoxSlot->SetHorizontalAlignment(SlotInfo.HorizontalAlignment);
+		SizeBoxSlot->SetVerticalAlignment(SlotInfo.VerticalAlignment);
+		bApplied = true;
+	}
+	else if (UScrollBoxSlot* ScrollBoxSlot = Cast<UScrollBoxSlot>(Widget->Slot))
+	{
+		ScrollBoxSlot->Modify();
+		Widget->Modify();
+		ScrollBoxSlot->SetPadding(SlotInfo.Padding);
+		ScrollBoxSlot->SetHorizontalAlignment(SlotInfo.HorizontalAlignment);
+		ScrollBoxSlot->SetVerticalAlignment(SlotInfo.VerticalAlignment);
 		bApplied = true;
 	}
 
@@ -4905,6 +4950,41 @@ bool FWidgetServiceRejectsInvalidParentTest::RunTest(const FString& Parameters)
 		TEXT("invalid parent error explains that the widget cannot contain children"),
 		Result.ErrorMessage.Contains(TEXT("cannot contain child widgets")));
 	TestNull(TEXT("rejected child was never constructed"), WidgetBP->WidgetTree->FindWidget(TEXT("UnsafeChild")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FWidgetServiceRemoveComponentClearsVariableGuidTest,
+	"VibeUE.WidgetService.RemoveComponent.ClearsVariableGuid",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FWidgetServiceRemoveComponentClearsVariableGuidTest::RunTest(const FString& Parameters)
+{
+	const FString PackageName = FString::Printf(TEXT("/Temp/VibeUE_RemoveGuid_%s"), *FGuid::NewGuid().ToString(EGuidFormats::Digits));
+	UPackage* Package = CreatePackage(*PackageName);
+	Package->SetFlags(RF_Transient);
+	UWidgetBlueprint* WidgetBP = NewObject<UWidgetBlueprint>(
+		Package, TEXT("WBP_RemoveGuidProbe"), RF_Public | RF_Standalone | RF_Transient);
+	WidgetBP->WidgetTree = NewObject<UWidgetTree>(WidgetBP, TEXT("WidgetTree"), RF_Transactional | RF_Transient);
+	UCanvasPanel* Root = WidgetBP->WidgetTree->ConstructWidget<UCanvasPanel>(
+		UCanvasPanel::StaticClass(), TEXT("ProbeRoot"));
+	WidgetBP->WidgetTree->RootWidget = Root;
+	WidgetBP->OnVariableAdded(Root->GetFName());
+
+	const FWidgetAddComponentResult AddResult = UWidgetService::AddComponent(
+		WidgetBP->GetPathName(), TEXT("Button"), TEXT("ProbeChild"), TEXT("ProbeRoot"), true);
+	TestTrue(TEXT("probe child added"), AddResult.bSuccess);
+	TestTrue(
+		TEXT("probe child GUID exists before removal"),
+		WidgetBP->WidgetVariableNameToGuidMap.Contains(TEXT("ProbeChild")));
+
+	const FWidgetRemoveComponentResult RemoveResult = UWidgetService::RemoveComponent(
+		WidgetBP->GetPathName(), TEXT("ProbeChild"), true);
+	TestTrue(TEXT("probe child removed"), RemoveResult.bSuccess);
+	TestNull(TEXT("probe child no longer exists in WidgetTree"), WidgetBP->WidgetTree->FindWidget(TEXT("ProbeChild")));
+	TestFalse(
+		TEXT("probe child GUID is removed with the WidgetTree node"),
+		WidgetBP->WidgetVariableNameToGuidMap.Contains(TEXT("ProbeChild")));
 	return true;
 }
 #endif

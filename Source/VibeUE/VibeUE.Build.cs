@@ -107,8 +107,7 @@ public class VibeUE : ModuleRules
 				"StaticMeshDescription",  // For FStaticMeshAttributes / FStaticMeshOperations / FUVMapParameters
 				"ToolsetRegistry",        // UE 5.8 native AI toolset registry — exposes services as AICallable tools on Epic's MCP endpoint
 				"ModelContextProtocol",   // UE 5.8 native MCP server — VibeUE's dynamic tools are bridged onto Epic's endpoint
-				"ModelContextProtocolEngine", // MCP port/settings lookup for post-registration listener self-probe
-				"HTTPServer",             // Verify this process actually owns an active listener on the configured MCP port
+				"ModelContextProtocolEngine", // MCP port/settings lookup for post-registration server self-probe
 			}
 		);
 

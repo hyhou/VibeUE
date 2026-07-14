@@ -68,6 +68,8 @@ struct FWidgetPropertyInfo
  *   "VerticalBox"   -> SizeRule, SizeValue, Padding, HorizontalAlignment, VerticalAlignment
  *   "HorizontalBox" -> SizeRule, SizeValue, Padding, HorizontalAlignment, VerticalAlignment
  *   "Overlay"       -> Padding, HorizontalAlignment, VerticalAlignment
+ *   "SizeBox"       -> Padding, HorizontalAlignment, VerticalAlignment
+ *   "ScrollBox"     -> Padding, HorizontalAlignment, VerticalAlignment
  *   "None"          -> root widget (no parent slot)
  */
 USTRUCT(BlueprintType)
@@ -76,7 +78,7 @@ struct FWidgetSlotInfo
 	GENERATED_BODY()
 
 	UPROPERTY(BlueprintReadWrite, Category = "Widget")
-	FString SlotType; // "Canvas", "VerticalBox", "HorizontalBox", "Overlay", "None", or raw class name
+	FString SlotType; // "Canvas", "VerticalBox", "HorizontalBox", "Overlay", "SizeBox", "ScrollBox", "None", or raw class name
 
 	// Canvas slot fields
 	UPROPERTY(BlueprintReadWrite, Category = "Widget")

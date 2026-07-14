@@ -15,7 +15,6 @@
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "Editor.h"
-#include "HttpServerModule.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
@@ -57,19 +56,8 @@ namespace
 			return false;
 		}
 
-		// GetHttpRouter(..., true) consults HTTPServer's listener owned by this process and returns
-		// null when its socket failed to bind/listen. A plain TCP connect cannot distinguish this
-		// editor from another process that inherited or squatted on the same port.
-		if (!FHttpServerModule::Get().GetHttpRouter(ExpectedPort, /*bFailOnBindFailure=*/true).IsValid())
-		{
-			UE_LOG(LogToolRegistry, Error,
-				TEXT("VibeUE endpoint self-probe FAILED: port %u is not listening in this UnrealEditor process. CrashReportClient may be squatting on an inherited MCP socket. Close the stale CrashReportClient/crash reporter, restart UnrealEditor, and verify that the configured port is owned by the new editor process."),
-				ExpectedPort);
-			return false;
-		}
-
 		UE_LOG(LogToolRegistry, Display,
-			TEXT("VibeUE endpoint self-probe passed: this UnrealEditor process is listening on port %u."),
+			TEXT("VibeUE MCP configuration preflight passed: Epic's server reports running on port %u; listener reachability must be verified by an external initialize probe."),
 			ExpectedPort);
 		return false;
 	}
