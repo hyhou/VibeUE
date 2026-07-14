@@ -1292,6 +1292,9 @@ public:
 	 *   "VerticalBox"   -> SizeRule, SizeValue, Padding, HorizontalAlignment, VerticalAlignment
 	 *   "HorizontalBox" -> SizeRule, SizeValue, Padding, HorizontalAlignment, VerticalAlignment
 	 *   "Overlay"       -> Padding, HorizontalAlignment, VerticalAlignment
+	 *   "Button"        -> Padding, HorizontalAlignment, VerticalAlignment
+	 *   "SizeBox"       -> Padding, HorizontalAlignment, VerticalAlignment
+	 *   "ScrollBox"     -> Padding, HorizontalAlignment, VerticalAlignment
 	 *
 	 * Recommended workflow: get_component_snapshot() → mutate slot_info → set_slot_info() → save.
 	 *

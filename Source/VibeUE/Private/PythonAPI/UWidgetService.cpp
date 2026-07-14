@@ -26,6 +26,7 @@
 #include "Components/WidgetSwitcher.h"
 #include "Components/TextBlock.h"
 #include "Components/Button.h"
+#include "Components/ButtonSlot.h"
 #include "Components/Image.h"
 #include "Components/EditableText.h"
 #include "Components/EditableTextBox.h"
@@ -4658,6 +4659,13 @@ FWidgetSlotInfo UWidgetService::BuildSlotInfo(UWidget* Widget)
 		SlotInfo.HorizontalAlignment = OverlaySlot->GetHorizontalAlignment();
 		SlotInfo.VerticalAlignment = OverlaySlot->GetVerticalAlignment();
 	}
+	else if (UButtonSlot* ButtonSlot = Cast<UButtonSlot>(Widget->Slot))
+	{
+		SlotInfo.SlotType = TEXT("Button");
+		SlotInfo.Padding = ButtonSlot->GetPadding();
+		SlotInfo.HorizontalAlignment = ButtonSlot->GetHorizontalAlignment();
+		SlotInfo.VerticalAlignment = ButtonSlot->GetVerticalAlignment();
+	}
 	else if (USizeBoxSlot* SizeBoxSlot = Cast<USizeBoxSlot>(Widget->Slot))
 	{
 		SlotInfo.SlotType = TEXT("SizeBox");
@@ -4758,6 +4766,15 @@ bool UWidgetService::SetSlotInfo(
 		OverlaySlot->SetPadding(SlotInfo.Padding);
 		OverlaySlot->SetHorizontalAlignment(SlotInfo.HorizontalAlignment);
 		OverlaySlot->SetVerticalAlignment(SlotInfo.VerticalAlignment);
+		bApplied = true;
+	}
+	else if (UButtonSlot* ButtonSlot = Cast<UButtonSlot>(Widget->Slot))
+	{
+		ButtonSlot->Modify();
+		Widget->Modify();
+		ButtonSlot->SetPadding(SlotInfo.Padding);
+		ButtonSlot->SetHorizontalAlignment(SlotInfo.HorizontalAlignment);
+		ButtonSlot->SetVerticalAlignment(SlotInfo.VerticalAlignment);
 		bApplied = true;
 	}
 	else if (USizeBoxSlot* SizeBoxSlot = Cast<USizeBoxSlot>(Widget->Slot))
