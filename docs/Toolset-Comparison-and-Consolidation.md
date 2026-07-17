@@ -156,6 +156,11 @@ services mostly take `FString`/JSON-string args and return JSON strings. This is
 
 ### Exists in engine, NOT enabled here (`Engine/Plugins/Experimental/Toolsets/`)
 
+> **TI project status (2026-07-17)**: `AllToolsets` is now enabled in the host project —
+> the toolsets below are **loaded at runtime** (verified via `list_toolsets`, 259 entries).
+> "(exist, off)" annotations in the tables are a pre-enablement snapshot; trust runtime
+> `describe_toolset` for the current native surface when routing.
+
 Enable these to compare exact tools before deleting the matching VibeUE service:
 
 `GameplayTagsToolset`, `StateTreeToolset`, `NiagaraToolsets` + `NiagaraAIAssistantTools`,
