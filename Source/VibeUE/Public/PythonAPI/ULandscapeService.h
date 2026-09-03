@@ -556,6 +556,7 @@ struct FLineTraceHit
 };
 
 /**
+ * NOTE: list_toolsets description is the UCLASS meta ToolTip below; this block is source documentation only (TI fork, 2026-09-03).
  * Landscape service exposed directly to Python.
  *
  * Provides 68 landscape management actions:
@@ -679,7 +680,7 @@ struct FLineTraceHit
  *   # Apply procedural noise for natural terrain
  *   unreal.LandscapeService.apply_noise("Landscape", 0.0, 0.0, 10000.0, 500.0, 0.005, 42)
  */
-UCLASS(BlueprintType)
+UCLASS(BlueprintType, meta = (ToolTip = "Landscape service (Python: unreal.LandscapeService). Landscape lifecycle, heightmaps, sculpting, paint/weight layers, holes, splines, terrain analysis."))
 class VIBEUE_API ULandscapeService : public UToolsetDefinition
 {
 	GENERATED_BODY()

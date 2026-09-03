@@ -84,6 +84,7 @@ struct FRVTVolumeResult
 };
 
 /**
+ * NOTE: list_toolsets description is the UCLASS meta ToolTip below; this block is source documentation only (TI fork, 2026-09-03).
  * Service for managing Runtime Virtual Textures (RVT).
  *
  * Runtime Virtual Textures enable efficient rendering of large landscapes by
@@ -115,7 +116,7 @@ struct FRVTVolumeResult
  *       "Landscape", "/Game/RVT/RVT_MyLandscape"
  *   )
  */
-UCLASS(BlueprintType)
+UCLASS(BlueprintType, meta = (ToolTip = "Runtime Virtual Texture service (Python: unreal.RuntimeVirtualTextureService). Create RVT assets, place RVT volumes in levels, assign RVTs to landscape actors."))
 class VIBEUE_API URuntimeVirtualTextureService : public UToolsetDefinition
 {
 	GENERATED_BODY()

@@ -323,6 +323,7 @@ struct FMontageNotifyInfo
 // ============================================================================
 
 /**
+ * NOTE: list_toolsets description is the UCLASS meta ToolTip below; this block is source documentation only (TI fork, 2026-09-03).
  * Animation Montage service exposed directly to Python.
  *
  * This service provides comprehensive CRUD operations for Animation Montage assets
@@ -368,7 +369,7 @@ struct FMontageNotifyInfo
  * - **Module**: VibeUE
  * - **File**: UAnimMontageService.h
  */
-UCLASS(BlueprintType)
+UCLASS(BlueprintType, meta = (ToolTip = "Animation Montage service (Python: unreal.AnimMontageService). Montage asset CRUD: sections, slot tracks, segments, branching points, blend settings."))
 class VIBEUE_API UAnimMontageService : public UToolsetDefinition
 {
 	GENERATED_BODY()

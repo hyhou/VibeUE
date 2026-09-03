@@ -605,6 +605,7 @@ struct FMapBlockoutMaterializeResult
 // =========================================================================
 
 /**
+ * NOTE: list_toolsets description is the UCLASS meta ToolTip below; this block is source documentation only (TI fork, 2026-09-03).
  * UMapBlockoutService — procedural FPS-map blockout from a VibeUE landscape.
  *
  * Workflow (matches docs/design/map-designer-spec.md):
@@ -632,7 +633,7 @@ struct FMapBlockoutMaterializeResult
  *       unreal.MapBlockoutService.materialize_roads_as_splines(
  *           result.final_state.stage1_roads, "Landscape1")
  */
-UCLASS(BlueprintType)
+UCLASS(BlueprintType, meta = (ToolTip = "Map blockout service (Python: unreal.MapBlockoutService). Procedural FPS-map blockout from a landscape: roads, POIs, fields, foliage, railway; Materialize."))
 class VIBEUE_API UMapBlockoutService : public UToolsetDefinition
 {
 	GENERATED_BODY()

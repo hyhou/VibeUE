@@ -229,6 +229,7 @@ struct FStructSearchResult
 // ============================================================================
 
 /**
+ * NOTE: list_toolsets description is the UCLASS meta ToolTip below; this block is source documentation only (TI fork, 2026-09-03).
  * Enum and Struct Service - Python API for UserDefinedEnum and UserDefinedStruct manipulation
  *
  * Provides full CRUD operations for:
@@ -252,7 +253,7 @@ struct FStructSearchResult
  *   path = unreal.EnumStructService.create_struct("/Game/Structs", "FWeaponData")
  *   unreal.EnumStructService.add_struct_property(path, "Damage", "float")
  */
-UCLASS(BlueprintType)
+UCLASS(BlueprintType, meta = (ToolTip = "Enum/Struct service (Python: unreal.EnumStructService). Full CRUD for UserDefinedEnum and UserDefinedStruct assets (native C++ types are read-only)."))
 class VIBEUE_API UEnumStructService : public UToolsetDefinition
 {
 	GENERATED_BODY()

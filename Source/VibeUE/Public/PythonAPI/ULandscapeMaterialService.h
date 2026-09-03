@@ -185,6 +185,7 @@ struct FLandscapeLayerInfoCreateResult
 };
 
 /**
+ * NOTE: list_toolsets description is the UCLASS meta ToolTip below; this block is source documentation only (TI fork, 2026-09-03).
  * Landscape material service exposed directly to Python.
  *
  * Provides 20 landscape material management actions:
@@ -244,7 +245,7 @@ struct FLandscapeLayerInfoCreateResult
  *   # Create layer info objects
  *   info = unreal.LandscapeMaterialService.create_layer_info_object("Grass", "/Game/Landscape")
  */
-UCLASS(BlueprintType)
+UCLASS(BlueprintType, meta = (ToolTip = "Landscape material service (Python: unreal.LandscapeMaterialService). Layer-blend nodes, layer info objects, grass output, height/slope blending, assignment."))
 class VIBEUE_API ULandscapeMaterialService : public UToolsetDefinition
 {
 	GENERATED_BODY()

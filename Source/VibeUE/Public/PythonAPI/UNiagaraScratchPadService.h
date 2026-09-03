@@ -118,6 +118,7 @@ struct FNiagaraScratchConnectionInfo
 };
 
 /**
+ * NOTE: list_toolsets description is the UCLASS meta ToolTip below; this block is source documentation only (TI fork, 2026-09-03).
  * Niagara Scratch Pad Service - Python API for authoring scratch-pad module graphs.
  *
  * The existing NiagaraEmitterService can add/list/configure stack *modules*, but it cannot
@@ -148,7 +149,7 @@ struct FNiagaraScratchConnectionInfo
  * Call apply_changes() once at the end to refresh signatures, rebuild emitter nodes, recompile,
  * and save. Discover method signatures with discover_python_class('unreal.NiagaraScratchPadService').
  */
-UCLASS(BlueprintType)
+UCLASS(BlueprintType, meta = (ToolTip = "Niagara Scratch Pad service (Python: unreal.NiagaraScratchPadService). Authors scratch-pad module graphs: nodes, Custom HLSL, typed pins, wiring."))
 class VIBEUE_API UNiagaraScratchPadService : public UToolsetDefinition
 {
 	GENERATED_BODY()

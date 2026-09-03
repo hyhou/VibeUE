@@ -75,6 +75,7 @@ struct FSettingsClassInfo
 };
 
 /**
+ * NOTE: list_toolsets description is the UCLASS meta ToolTip below; this block is source documentation only (TI fork, 2026-09-03).
  * Project Settings Service - Python API for Unreal Engine project settings manipulation.
  *
  * Provides comprehensive access to project configuration including:
@@ -120,7 +121,7 @@ struct FSettingsClassInfo
  *
  * @note Changes are written to config files and may require editor restart
  */
-UCLASS(BlueprintType)
+UCLASS(BlueprintType, meta = (ToolTip = "Project Settings service (Python: unreal.ProjectSettingsService). Project config: maps/rendering/physics/input/audio, UDeveloperSettings discovery, direct INI."))
 class VIBEUE_API UProjectSettingsService : public UToolsetDefinition
 {
 	GENERATED_BODY()

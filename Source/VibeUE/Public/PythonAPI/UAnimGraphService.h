@@ -197,6 +197,7 @@ struct FAnimSequenceUsageInfo
 };
 
 /**
+ * NOTE: list_toolsets description is the UCLASS meta ToolTip below; this block is source documentation only (TI fork, 2026-09-03).
  * Animation Graph service exposed directly to Python.
  *
  * This service provides AnimBlueprint introspection and navigation functionality,
@@ -227,7 +228,7 @@ struct FAnimSequenceUsageInfo
  * - **Module**: VibeUE
  * - **File**: UAnimGraphService.h
  */
-UCLASS(BlueprintType)
+UCLASS(BlueprintType, meta = (ToolTip = "Animation Graph service (Python: unreal.AnimGraphService). AnimBlueprint state-machine introspection and opening specific machines/states in the editor."))
 class VIBEUE_API UAnimGraphService : public UToolsetDefinition
 {
 	GENERATED_BODY()

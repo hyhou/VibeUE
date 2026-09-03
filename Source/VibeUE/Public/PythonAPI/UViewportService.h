@@ -78,6 +78,7 @@ struct FViewportInfo
 };
 
 /**
+ * NOTE: list_toolsets description is the UCLASS meta ToolTip below; this block is source documentation only (TI fork, 2026-09-03).
  * Viewport Service - Python API for controlling the Unreal Editor level viewport.
  *
  * Provides access to all viewport camera options from the perspective dropdown menu:
@@ -128,7 +129,7 @@ struct FViewportInfo
  *       position/rotation (no set_camera_location / set_camera_rotation) — use the engine
  *       path above. (issue #471)
  */
-UCLASS(BlueprintType)
+UCLASS(BlueprintType, meta = (ToolTip = "Viewport service (Python: unreal.ViewportService). Level viewport control: view types, FOV/clip planes, exposure, game view, cinematic control, layouts."))
 class VIBEUE_API UViewportService : public UToolsetDefinition
 {
 	GENERATED_BODY()

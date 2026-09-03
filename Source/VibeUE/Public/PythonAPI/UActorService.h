@@ -89,6 +89,7 @@ struct FActorPropertyData
 };
 
 /**
+ * NOTE: list_toolsets description is the UCLASS meta ToolTip below; this block is source documentation only (TI fork, 2026-09-03).
  * Actor service exposed directly to Python.
  *
  * Trimmed to the operations Epic's native toolsets (ActorTools, SceneTools,
@@ -110,7 +111,7 @@ struct FActorPropertyData
  *   # Properties
  *   props = actor_service.get_all_properties("MyActor")
  */
-UCLASS(BlueprintType)
+UCLASS(BlueprintType, meta = (ToolTip = "Actor service (Python: unreal.ActorService). Beyond ActorTools/SceneTools: transform lock, absolute-transform, preserve-scale, camera framing, property dump."))
 class VIBEUE_API UActorService : public UToolsetDefinition
 {
 	GENERATED_BODY()

@@ -356,13 +356,14 @@ struct FStateTreeTaskPropertySetResult
 };
 
 /**
+ * NOTE: list_toolsets description is the UCLASS meta ToolTip below; this block is source documentation only (TI fork, 2026-09-03).
  * VibeUE service for creating, inspecting, and editing StateTree assets.
  * Exposed to Python as unreal.StateTreeService
  *
  * State paths use "/" separator starting from the subtree root name,
  * e.g. "Root", "Root/Walking", "Root/Walking/Idle"
  */
-UCLASS(BlueprintType)
+UCLASS(BlueprintType, meta = (ToolTip = "StateTree service (Python: unreal.StateTreeService). Creates, inspects and edits StateTree assets; state paths use '/' from the subtree root."))
 class VIBEUE_API UStateTreeService : public UToolsetDefinition
 {
 	GENERATED_BODY()

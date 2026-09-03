@@ -68,6 +68,7 @@ struct FGameplayTagResult
 };
 
 /**
+ * NOTE: list_toolsets description is the UCLASS meta ToolTip below; this block is source documentation only (TI fork, 2026-09-03).
  * Gameplay Tag Service - Python API for managing Unreal Engine Gameplay Tags.
  *
  * Provides full CRUD operations for gameplay tags including:
@@ -112,7 +113,7 @@ struct FGameplayTagResult
  *       the exact action names). There is no rename_tag / remove_tag on this service.
  * @note Tags are written to DefaultGameplayTags.ini by default and registered at runtime.
  */
-UCLASS(BlueprintType)
+UCLASS(BlueprintType, meta = (ToolTip = "Gameplay Tag service (Python: unreal.GameplayTagService). Owns has_tag, get_tag_info, get_children, bulk add_tags (INI + runtime); rest is GameplayTagsToolset."))
 class VIBEUE_API UGameplayTagService : public UToolsetDefinition
 {
 	GENERATED_BODY()

@@ -61,6 +61,7 @@ struct FTransactionState
 };
 
 /**
+ * NOTE: list_toolsets description is the UCLASS meta ToolTip below; this block is source documentation only (TI fork, 2026-09-03).
  * Transaction Service - Python API for the editor undo/redo system (issue #469).
  *
  * Wraps GEditor's transaction buffer (GEditor->Trans) so agents can drive undo/redo,
@@ -90,7 +91,7 @@ struct FTransactionState
  *
  *   svc.reset("Test cleanup")  # clears the undo buffer (does NOT touch the world)
  */
-UCLASS(BlueprintType)
+UCLASS(BlueprintType, meta = (ToolTip = "Transaction service (Python: unreal.TransactionService). Editor undo/redo buffer: undo, redo, begin/end named transactions, history inspection, reset."))
 class VIBEUE_API UTransactionService : public UToolsetDefinition
 {
 	GENERATED_BODY()

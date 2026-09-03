@@ -1091,6 +1091,7 @@ struct FBuildGraphResult
 };
 
 /**
+ * NOTE: list_toolsets description is the UCLASS meta ToolTip below; this block is source documentation only (TI fork, 2026-09-03).
  * Blueprint service exposed directly to Python.
  *
  * This service provides blueprint introspection and analysis with native
@@ -1115,7 +1116,7 @@ struct FBuildGraphResult
  * @note All methods are static and thread-safe
  * @note C++ out parameters become Python return values
  */
-UCLASS(BlueprintType)
+UCLASS(BlueprintType, meta = (ToolTip = "Blueprint service (Python: unreal.BlueprintService). Introspection/analysis plus build_graph, timelines, event dispatchers, delegates, custom-event inputs."))
 class VIBEUE_API UBlueprintService : public UToolsetDefinition
 {
 	GENERATED_BODY()

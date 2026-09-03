@@ -186,6 +186,7 @@ struct FUVLightmapSettings
 };
 
 /**
+ * NOTE: list_toolsets description is the UCLASS meta ToolTip below; this block is source documentation only (TI fork, 2026-09-03).
  * UV mapping service exposed directly to Python.
  *
  * Provides automation-grade UV channel manipulation for StaticMesh and SkeletalMesh
@@ -247,7 +248,7 @@ struct FUVLightmapSettings
  *   unreal.UVMappingService.export_uv_layout_image(
  *       "/Game/Meshes/SM_Wall", 0, 1, "D:/uv_wall_lm.png", 1024)
  */
-UCLASS(BlueprintType)
+UCLASS(BlueprintType, meta = (ToolTip = "UV mapping service (Python: unreal.UVMappingService). UV channel inspect/lifecycle/generate/transform, lightmap settings, visualization for Static/SkeletalMesh."))
 class VIBEUE_API UUVMappingService : public UToolsetDefinition
 {
 	GENERATED_BODY()

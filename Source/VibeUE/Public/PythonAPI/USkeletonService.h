@@ -386,6 +386,7 @@ struct FAddBoneParams
 };
 
 /**
+ * NOTE: list_toolsets description is the UCLASS meta ToolTip below; this block is source documentation only (TI fork, 2026-09-03).
  * Skeleton and Skeletal Mesh service exposed directly to Python.
  *
  * This service provides comprehensive CRUD operations for Skeleton and SkeletalMesh assets
@@ -422,7 +423,7 @@ struct FAddBoneParams
  * - **Module**: VibeUE
  * - **File**: USkeletonService.h
  */
-UCLASS(BlueprintType)
+UCLASS(BlueprintType, meta = (ToolTip = "Skeleton service (Python: unreal.SkeletonService). Skeleton/SkeletalMesh asset editing: bone hierarchy, sockets, retargeting, curve metadata, blend profiles."))
 class VIBEUE_API USkeletonService : public UToolsetDefinition
 {
 	GENERATED_BODY()

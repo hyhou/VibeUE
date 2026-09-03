@@ -134,6 +134,7 @@ struct FNiagaraSystemComparison
 };
 
 /**
+ * NOTE: list_toolsets description is the UCLASS meta ToolTip below; this block is source documentation only (TI fork, 2026-09-03).
  * Niagara Service - Python API for Niagara rapid-iteration tuning + diagnostics.
  *
  * This service was TRIMMED (issue #462): system / emitter / user-parameter
@@ -169,7 +170,7 @@ struct FNiagaraSystemComparison
  *   # Diagnose:
  *   print(unreal.NiagaraService.debug_activation("/Game/VFX/NS_Fire"))
  */
-UCLASS(BlueprintType)
+UCLASS(BlueprintType, meta = (ToolTip = "Niagara service (Python: unreal.NiagaraService). Rapid-iteration param tuning and diagnostics (compare systems, emitter lifecycle, debug activation) only."))
 class VIBEUE_API UNiagaraService : public UToolsetDefinition
 {
 	GENERATED_BODY()

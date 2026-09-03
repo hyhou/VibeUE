@@ -79,6 +79,7 @@ struct FConsoleVariableInfo
 };
 
 /**
+ * NOTE: list_toolsets description is the UCLASS meta ToolTip below; this block is source documentation only (TI fork, 2026-09-03).
  * Engine Settings Service - Python API for Unreal Engine configuration manipulation.
  *
  * Provides comprehensive access to engine configuration including:
@@ -115,7 +116,7 @@ struct FConsoleVariableInfo
  *
  * @note Changes are written to config files and may require editor restart
  */
-UCLASS(BlueprintType)
+UCLASS(BlueprintType, meta = (ToolTip = "Engine Settings service (Python: unreal.EngineSettingsService). Engine config: r.*/gc.* cvars, physics, audio, threading, platform settings, raw INI access."))
 class VIBEUE_API UEngineSettingsService : public UToolsetDefinition
 {
 	GENERATED_BODY()

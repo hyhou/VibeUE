@@ -138,6 +138,7 @@ struct FSoundWaveInfo
 // ============================================================================
 
 /**
+ * NOTE: list_toolsets description is the UCLASS meta ToolTip below; this block is source documentation only (TI fork, 2026-09-03).
  * SoundCue authoring service exposed directly to Python.
  *
  * Provides creation, inspection, and editing of SoundCue assets including
@@ -184,7 +185,7 @@ struct FSoundWaveInfo
  * - **Module**: VibeUE
  * - **File**: USoundCueService.h
  */
-UCLASS(BlueprintType)
+UCLASS(BlueprintType, meta = (ToolTip = "SoundCue service (Python: unreal.SoundCueService). SoundCue creation, inspection and editing: node graph, attenuation settings, SoundWave references."))
 class VIBEUE_API USoundCueService : public UToolsetDefinition
 {
 	GENERATED_BODY()

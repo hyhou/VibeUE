@@ -295,6 +295,7 @@ struct FBatchCreateDescriptor
 };
 
 /**
+ * NOTE: list_toolsets description is the UCLASS meta ToolTip below; this block is source documentation only (TI fork, 2026-09-03).
  * Material Node Service - Python API for material graph manipulation
  * 
  * Provides 37 material node management actions:
@@ -418,7 +419,7 @@ struct FMaterialDiagnostics
 	int32 VectorParameterCount = 0;
 };
 
-UCLASS()
+UCLASS(meta = (ToolTip = "Material node service (Python: unreal.MaterialNodeService). Material graph editing: expressions, function calls, custom HLSL, batch ops, graph export/compare."))
 class VIBEUE_API UMaterialNodeService : public UToolsetDefinition
 {
 	GENERATED_BODY()

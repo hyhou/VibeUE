@@ -3,6 +3,7 @@
 #include "Core/VibeUEMCPToolBridge.h"
 #include "Core/ToolRegistry.h"
 #include "Core/ToolMetadata.h"
+#include "Settings/VibeUEProjectSettings.h"
 
 #include "IModelContextProtocolModule.h"
 #include "IModelContextProtocolTool.h"
@@ -366,14 +367,31 @@ namespace VibeUEMCPToolBridge
 			return;
 		}
 
+		// Project-level policy (Config/DefaultEngine.ini): tools listed here are never registered
+		// on the endpoint, so clients cannot list or call them. Exact, case-sensitive names.
+		const TArray<FString>& PolicyDisabled = GetDefault<UVibeUEProjectSettings>()->DisabledTopLevelTools;
+		TArray<FString> UnmatchedPolicyNames = PolicyDisabled;
+
 		int32 Registered = 0;
 		int32 Skipped = 0;
+		TArray<FString> Disabled;
 		for (const FToolMetadata& Meta : FToolRegistry::Get().GetAllTools())
 		{
 			// Internal-only and editor-testing tools are not exposed to external MCP clients.
 			if (Meta.bInternalOnly || Meta.bEditorTestingOnly)
 			{
 				++Skipped;
+				continue;
+			}
+
+			const auto IsThisTool = [&Meta](const FString& Name)
+			{
+				return Name.Equals(Meta.Name, ESearchCase::CaseSensitive);
+			};
+			if (PolicyDisabled.ContainsByPredicate(IsThisTool))
+			{
+				Disabled.Add(Meta.Name);
+				UnmatchedPolicyNames.RemoveAll(IsThisTool);
 				continue;
 			}
 
@@ -390,9 +408,18 @@ namespace VibeUEMCPToolBridge
 			}
 		}
 
+		for (const FString& Name : UnmatchedPolicyNames)
+		{
+			UE_LOG(LogToolRegistry, Warning,
+				TEXT("VibeUE: DisabledTopLevelTools entry '%s' matches no registered tool (names are case-sensitive); nothing was disabled for it."),
+				*Name);
+		}
+
 		UE_LOG(LogToolRegistry, Display,
-			TEXT("VibeUE: exposed %d tool(s) on Epic's MCP endpoint (%d internal/testing tools skipped)."),
-			Registered, Skipped);
+			TEXT("VibeUE: exposed %d tool(s) on Epic's MCP endpoint (%d internal/testing tools skipped; %d disabled by project settings%s%s)."),
+			Registered, Skipped, Disabled.Num(),
+			Disabled.Num() > 0 ? TEXT(": ") : TEXT(""),
+			*FString::Join(Disabled, TEXT(", ")));
 
 		if (!GPIEStartHandle.IsValid())
 		{

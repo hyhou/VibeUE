@@ -93,6 +93,7 @@ struct FNiagaraModuleInfo_Custom
 };
 
 /**
+ * NOTE: list_toolsets description is the UCLASS meta ToolTip below; this block is source documentation only (TI fork, 2026-09-03).
  * Niagara Emitter Service - Python API for emitter color + module authoring.
  *
  * Methods this service actually exposes (issue #462 — the docstring previously listed
@@ -126,7 +127,7 @@ struct FNiagaraModuleInfo_Custom
  *   # Set color tint (works even with ColorFromCurve)
  *   unreal.NiagaraEmitterService.set_color_tint("/Game/VFX/NS_Fire", "Flames", "(0.0, 3.0, 0.0)")
  */
-UCLASS(BlueprintType)
+UCLASS(BlueprintType, meta = (ToolTip = "Niagara Emitter service (Python: unreal.NiagaraEmitterService). Emitter color authoring (tint, curve keys, hue shift), list/add modules, rapid-iteration params."))
 class VIBEUE_API UNiagaraEmitterService : public UToolsetDefinition
 {
 	GENERATED_BODY()

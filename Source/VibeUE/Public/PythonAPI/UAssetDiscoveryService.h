@@ -49,6 +49,7 @@ struct FVibeUEAssetExistsResult
 };
 
 /**
+ * NOTE: list_toolsets description is the UCLASS meta ToolTip below; this block is source documentation only (TI fork, 2026-09-03).
  * Asset discovery service exposed directly to Python.
  *
  * This service provides asset search and discovery functionality with native
@@ -82,7 +83,7 @@ struct FVibeUEAssetExistsResult
  * @note All methods are static and thread-safe
  * @note This replaces the JSON-based manage_asset MCP tool
  */
-UCLASS(BlueprintType)
+UCLASS(BlueprintType, meta = (ToolTip = "Asset discovery service (Python: unreal.AssetDiscoveryService). Asset search/discovery returning native UE types (no JSON round-trip); replaces manage_asset."))
 class VIBEUE_API UAssetDiscoveryService : public UToolsetDefinition
 {
 	GENERATED_BODY()

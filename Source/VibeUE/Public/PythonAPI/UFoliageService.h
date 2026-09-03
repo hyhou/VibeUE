@@ -130,6 +130,7 @@ struct FFoliageQueryResult
 };
 
 /**
+ * NOTE: list_toolsets description is the UCLASS meta ToolTip below; this block is source documentation only (TI fork, 2026-09-03).
  * Foliage service exposed directly to Python.
  *
  * Provides foliage placement and management for landscapes:
@@ -176,7 +177,7 @@ struct FFoliageQueryResult
  *   # Remove trees in area
  *   unreal.FoliageService.remove_foliage_in_radius("/Game/Meshes/SM_Tree", 0.0, 0.0, 1000.0)
  */
-UCLASS(BlueprintType)
+UCLASS(BlueprintType, meta = (ToolTip = "Foliage service (Python: unreal.FoliageService). Foliage type creation/properties, placement incl. layer-aware, removal and instance queries on landscapes."))
 class VIBEUE_API UFoliageService : public UToolsetDefinition
 {
 	GENERATED_BODY()

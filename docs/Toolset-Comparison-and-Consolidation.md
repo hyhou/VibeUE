@@ -124,6 +124,26 @@ native `UAgentSkill`s) and should be pruned to match the surviving toolsets.
 services mostly take `FString`/JSON-string args and return JSON strings. This is the single biggest
 "work more like Epic" refactor (see §6).
 
+### Description budget (TI fork, measured 2026-09-03)
+
+- `list_toolsets` returned 57.7 KB; the 30 VibeUE `U*Service` entries were 44 KB of it (76%),
+  largest single entry `LandscapeService` 5.2 KB. Epic's 57 entries averaged 239 bytes.
+- Mechanism: a toolset's description is `UClass::GetToolTipText()`
+  (`ToolsetRegistry/Private/ToolsetRegistry/FunctionLibraryToolset.h:43-48`). UHT builds the class
+  `ToolTip` from the `/** */` comment before `UCLASS` **only when no explicit `ToolTip` meta exists**
+  (`EpicGames.UHT/Parsers/UhtParsingScope.cs:172-179`). VibeUE's class comments are multi-page Python
+  manuals, so they were shipped verbatim as descriptions.
+- Fix: every `Source/VibeUE/Public/PythonAPI/U*Service.h` now declares
+  `UCLASS(..., meta = (ToolTip = "<one line, <=160 chars>"))`. The long comments stay in source as
+  documentation only (each carries a `NOTE:` line saying so); they no longer reach `list_toolsets`
+  or the Python `__doc__`. Post-change size: re-measure after rebuild.
+- Top-level tool switch: `UVibeUEProjectSettings::DisabledTopLevelTools`
+  (Project Settings > Plugins > VibeUE; `Config/DefaultEngine.ini`
+  `[/Script/VibeUE.VibeUEProjectSettings]`, exact case-sensitive names). Default hides
+  `deep_research` and `terrain_data` (network-facing, not editor functionality).
+  `VibeUEMCPToolBridge::RegisterAll()` skips them, so they are neither listed nor callable; the
+  `ModelContextProtocol.RefreshTools` re-registration goes through the same function.
+
 ---
 
 ## 3. Epic's toolset catalog
@@ -150,7 +170,7 @@ services mostly take `FString`/JSON-string args and return JSON strings. This is
 | `EditorToolset.ProgrammaticToolset` | `get_execution_environment`, `execute_tool_script` | **Run Python batches** |
 | `EditorToolset.EditorAppToolset` | `StartPIE`/`StopPIE`/`IsPIERunning`, `CaptureViewport` (with annotations!), `CaptureEditorImage`, `CaptureAssetImage`, `SearchCVars`, get/set camera, focus, selection, content-browser nav, `OpenEditorForAsset` | **Editor app control + screenshots** |
 | `EditorToolset.LogsToolset` | `GetLogEntries`, `GetLogCategories`, `Get/SetVerbosity` | **Log reading** |
-| `AIAssistant.AIAssistantToolset` | `GetProjectContext`, `GetDockedContext` | In-editor assistant context (no VibeUE analog) |
+| `AIAssistant.AIAssistantToolset` | `GetProjectContext`, `GetDockedContext` | In-editor assistant context (no VibeUE analog) (engine plugin `AIAssistant` not enabled in host project; absent at runtime 2026-09-03) |
 | `ToolsetRegistry.AgentSkillToolset` | `ListSkills`, `GetSkills`, `CreateSkill`, `UpdateSkill` | **Skills** (VibeUE packs now register here) |
 | `UserDefinedEnum`, `UserDefinedStruct` | create/edit enum & struct | Overlaps VibeUE `EnumStructService` |
 

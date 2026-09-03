@@ -207,6 +207,7 @@ struct FInputTypeDiscoveryResult
 };
 
 /**
+ * NOTE: list_toolsets description is the UCLASS meta ToolTip below; this block is source documentation only (TI fork, 2026-09-03).
  * Input service exposed directly to Python (Enhanced Input System).
  *
  * Python method names (use THESE with discover_python_class method_filter —
@@ -261,7 +262,7 @@ struct FInputTypeDiscoveryResult
  *
  * @note This replaces the JSON-based manage_enhanced_input MCP tool
  */
-UCLASS(BlueprintType)
+UCLASS(BlueprintType, meta = (ToolTip = "Input service (Python: unreal.InputService). Enhanced Input authoring: input actions, mapping contexts, modifiers, triggers, value/type discovery."))
 class VIBEUE_API UInputService : public UToolsetDefinition
 {
 	GENERATED_BODY()

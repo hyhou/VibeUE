@@ -497,6 +497,7 @@ struct FAnimationPreviewState
 };
 
 /**
+ * NOTE: list_toolsets description is the UCLASS meta ToolTip below; this block is source documentation only (TI fork, 2026-09-03).
  * Animation Sequence service exposed directly to Python.
  *
  * This service provides comprehensive CRUD operations for Animation Sequence assets
@@ -542,7 +543,7 @@ struct FAnimationPreviewState
  * - **Module**: VibeUE
  * - **File**: UAnimSequenceService.h
  */
-UCLASS(BlueprintType)
+UCLASS(BlueprintType, meta = (ToolTip = "Animation Sequence service (Python: unreal.AnimSequenceService). Anim asset CRUD: keyframes, curves, notifies, sync markers, root motion, data extraction."))
 class VIBEUE_API UAnimSequenceService : public UToolsetDefinition
 {
 	GENERATED_BODY()

@@ -199,6 +199,7 @@ struct FMaterialSummary
 };
 
 /**
+ * NOTE: list_toolsets description is the UCLASS meta ToolTip below; this block is source documentation only (TI fork, 2026-09-03).
  * Material service exposed directly to Python.
  *
  * Provides material management actions NOT covered by Epic's native
@@ -228,7 +229,7 @@ struct FMaterialSummary
  *
  * @note This replaces the JSON-based manage_material MCP tool
  */
-UCLASS(BlueprintType)
+UCLASS(BlueprintType, meta = (ToolTip = "Material service (Python: unreal.MaterialService). Beyond MaterialTools/MaterialInstanceTools: save/compile/open/refresh, info/summary, bulk instance params."))
 class VIBEUE_API UMaterialService : public UToolsetDefinition
 {
 	GENERATED_BODY()

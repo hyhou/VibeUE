@@ -203,6 +203,7 @@ struct FMetaSoundConnection
 // ============================================================================
 
 /**
+ * NOTE: list_toolsets description is the UCLASS meta ToolTip below; this block is source documentation only (TI fork, 2026-09-03).
  * Python-accessible MetaSound source authoring service.
  *
  * Quick reference (all methods are static — call on the class):
@@ -217,7 +218,7 @@ struct FMetaSoundConnection
  * Use list_nodes() to retrieve NodeIds of the built-in interface nodes
  * (OnPlay output, OnFinished input, AudioOut inputs) created at asset creation.
  */
-UCLASS()
+UCLASS(meta = (ToolTip = "MetaSound service (Python: unreal.MetaSoundService). MetaSound source authoring: create asset, discover/add nodes, connect pins, list interface nodes, save."))
 class UMetaSoundService : public UToolsetDefinition
 {
 	GENERATED_BODY()

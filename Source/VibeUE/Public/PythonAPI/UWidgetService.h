@@ -521,6 +521,7 @@ struct FVibeUELiveWidgetInfo
 };
 
 /**
+ * NOTE: list_toolsets description is the UCLASS meta ToolTip below; this block is source documentation only (TI fork, 2026-09-03).
  * Widget service exposed directly to Python.
  *
  * Provides 43 widget management actions:
@@ -601,7 +602,7 @@ struct FVibeUELiveWidgetInfo
  *
  * @note This replaces the JSON-based manage_umg_widget MCP tool
  */
-UCLASS(BlueprintType)
+UCLASS(BlueprintType, meta = (ToolTip = "Widget service (Python: unreal.WidgetService). Widget Blueprint hierarchy/properties, event and MVVM bindings, font/brush, animations, preview, PIE widgets."))
 class VIBEUE_API UWidgetService : public UToolsetDefinition
 {
 	GENERATED_BODY()

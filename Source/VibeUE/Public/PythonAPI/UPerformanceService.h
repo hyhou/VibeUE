@@ -7,6 +7,7 @@
 #include "UPerformanceService.generated.h"
 
 /**
+ * NOTE: list_toolsets description is the UCLASS meta ToolTip below; this block is source documentation only (TI fork, 2026-09-03).
  * Performance & tracing service — frame-timing triage, Unreal Insights trace capture, trace+log
  * analysis, and trace-attached standalone play.
  *
@@ -18,7 +19,7 @@
  * workload → StopTrace → Analyse. For a representative reading, profile under PIE or a standalone
  * session, not the bare editor viewport. Methods return a JSON string.
  */
-UCLASS(BlueprintType)
+UCLASS(BlueprintType, meta = (ToolTip = "Performance service (Python: unreal.PerformanceService). Frame-timing triage (CPU vs GPU bound), Unreal Insights trace capture, trace+log analysis."))
 class VIBEUE_API UPerformanceService : public UToolsetDefinition
 {
 	GENERATED_BODY()
