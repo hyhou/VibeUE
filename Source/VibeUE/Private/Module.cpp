@@ -3,19 +3,12 @@
 #include "Module.h"
 #include "Modules/ModuleManager.h"
 #include "EditorSubsystem.h"
-#include "Editor.h"
 #include "Core/ToolRegistry.h"
 #include "HAL/IConsoleManager.h"
 #include "HAL/PlatformFileManager.h"
 #include "HAL/FileManager.h"
 #include "Tools/PythonTools.h"
 #include "IPythonScriptPlugin.h"
-#include "ToolsetRegistry/UToolsetRegistry.h"
-#include "ToolsetRegistry/ToolsetDefinition.h"
-#include "Core/VibeUEMCPToolBridge.h"
-#include "IModelContextProtocolModule.h"
-#include "UObject/UObjectHash.h"
-#include "UObject/UObjectIterator.h"
 #include "Utils/VibeUEPaths.h"
 #include "Misc/Paths.h"
 #include "Misc/FileHelper.h"
@@ -298,7 +291,7 @@ void FModule::StartupModule()
 	UE_LOG(LogTemp, Display, TEXT("VibeUE Module has started"));
 
 	// Skip all interactive services when running as a commandlet (e.g. -run=Cook).
-	// The MCP HTTP server and Python services keep threads alive that prevent
+	// Python services keep threads alive that prevent
 	// UnrealEditor-Cmd.exe from exiting cleanly, causing UAT cook timeouts.
 	if (IsRunningCommandlet())
 	{
@@ -316,113 +309,6 @@ void FModule::StartupModule()
 	// Register PreExit callback to cleanup Python references before Unreal GC
 	FCoreDelegates::OnPreExit.AddRaw(this, &FModule::OnPreExit);
 
-	// Expose VibeUE service toolsets on UE 5.8's native ToolsetRegistry / MCP endpoint.
-	// The registry needs GEditor; register now if it's already up (late/hot-reload load),
-	// otherwise defer to PostEngineInit. Branch on GEditor directly to avoid the registry's
-	// "Editor is not available" warning during normal startup.
-	if (GEditor)
-	{
-		RegisterToolsets();
-	}
-	else
-	{
-		FCoreDelegates::GetOnPostEngineInit().AddRaw(this, &FModule::RegisterToolsets);
-	}
-}
-
-// Collect every non-abstract UToolsetDefinition subclass defined in this module (/Script/VibeUE)
-// that exposes at least one AICallable tool. Reflection-based so new services are picked up
-// automatically without editing this file.
-static void GatherVibeUEToolsetClasses(TArray<UClass*>& OutClasses)
-{
-	TArray<UClass*> Derived;
-	GetDerivedClasses(UToolsetDefinition::StaticClass(), Derived, /*bRecursive*/ true);
-
-	const UPackage* VibeUEPackage = FindPackage(nullptr, TEXT("/Script/VibeUE"));
-	for (UClass* Class : Derived)
-	{
-		if (!Class || Class->HasAnyClassFlags(CLASS_Abstract) || Class->GetOutermost() != VibeUEPackage)
-		{
-			continue;
-		}
-
-		// Skip toolsets with no AICallable functions (e.g. instance-only services) — they'd
-		// register as an empty toolset.
-		bool bHasAICallable = false;
-		for (TFieldIterator<UFunction> It(Class); It && !bHasAICallable; ++It)
-		{
-			const TValueOrError<bool, FString> Result = UToolsetDefinition::IsFunctionAICallable(*It);
-			bHasAICallable = Result.HasValue() && Result.GetValue();
-		}
-		if (bHasAICallable)
-		{
-			OutClasses.Add(Class);
-		}
-	}
-}
-
-void FModule::RegisterToolsets()
-{
-	// Service layer -> Epic's ToolsetRegistry (AICallable tools).
-	if (UToolsetRegistry::IsAvailable())
-	{
-		TArray<UClass*> ToolsetClasses;
-		GatherVibeUEToolsetClasses(ToolsetClasses);
-		for (UClass* Class : ToolsetClasses)
-		{
-			UToolsetRegistry::RegisterToolsetClass(Class);
-		}
-		UE_LOG(LogTemp, Display, TEXT("VibeUE: registered %d service toolset(s) with ToolsetRegistry."), ToolsetClasses.Num());
-	}
-	else
-	{
-		UE_LOG(LogTemp, Warning, TEXT("VibeUE: ToolsetRegistry not available; service toolsets not registered."));
-	}
-
-	// Dynamic FToolRegistry tools -> Epic's MCP endpoint (independent of ToolsetRegistry).
-	VibeUEMCPToolBridge::RegisterAll();
-
-	// ModelContextProtocol.RefreshTools drops every registered MCP tool and broadcasts
-	// OnRefreshTools for providers to re-add themselves (Epic's editor module does this for
-	// ToolsetRegistry adapters, so the service toolsets above survive on their own). Without
-	// this subscription the bridged tools stay gone until the next editor restart.
-	if (IModelContextProtocolModule* MCPModule = IModelContextProtocolModule::Get();
-		MCPModule && !OnRefreshToolsHandle.IsValid())
-	{
-		OnRefreshToolsHandle = MCPModule->OnRefreshTools().AddRaw(this, &FModule::HandleMCPRefreshTools);
-	}
-}
-
-void FModule::HandleMCPRefreshTools()
-{
-	// RefreshTools already emptied the MCP module's tool list; UnregisterAll() only clears
-	// the bridge's now-stale tracking list so RegisterAll() starts from a clean slate.
-	VibeUEMCPToolBridge::UnregisterAll();
-	VibeUEMCPToolBridge::RegisterAll();
-}
-
-void FModule::UnregisterToolsets()
-{
-	if (OnRefreshToolsHandle.IsValid())
-	{
-		if (IModelContextProtocolModule* MCPModule = IModelContextProtocolModule::Get())
-		{
-			MCPModule->OnRefreshTools().Remove(OnRefreshToolsHandle);
-		}
-		OnRefreshToolsHandle.Reset();
-	}
-
-	VibeUEMCPToolBridge::UnregisterAll();
-
-	if (UToolsetRegistry::IsAvailable())
-	{
-		TArray<UClass*> ToolsetClasses;
-		GatherVibeUEToolsetClasses(ToolsetClasses);
-		for (UClass* Class : ToolsetClasses)
-		{
-			UToolsetRegistry::UnregisterToolsetClass(Class);
-		}
-	}
 }
 
 void FModule::ShutdownModule()
@@ -433,12 +319,8 @@ void FModule::ShutdownModule()
 		return;
 	}
 
-	// Unregister PreExit / PostEngineInit callbacks
+	// Unregister the Python-service cleanup callback.
 	FCoreDelegates::OnPreExit.RemoveAll(this);
-	FCoreDelegates::GetOnPostEngineInit().RemoveAll(this);
-
-	// Unregister service toolsets + MCP tools
-	UnregisterToolsets();
 
 	// Shutdown Tool Registry
 	FToolRegistry::Get().Shutdown();

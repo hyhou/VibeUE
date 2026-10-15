@@ -4,7 +4,7 @@
 	"VersionName": "5.0",
 	"EngineVersion": "5.8.0",
 	"FriendlyName": "VibeUE",
-	"Description": "MCP Expansion and AI Editor Toolset for Unreal Engine 5.8 — extends Unreal's native MCP server, ToolsetRegistry, and AgentSkill systems with deep editor automation.",
+	"Description": "Reflected editor authoring services retained for project scripts. MCP registration is retired in this project.",
 	"Category": "Editor",
 	"CreatedBy": "Kevin Buckley",
 	"CreatedByURL": "https://www.vibeue.com",
@@ -71,10 +71,6 @@
 		},
 		{
 			"Name": "ToolsetRegistry",
-			"Enabled": true
-		},
-		{
-			"Name": "ModelContextProtocol",
 			"Enabled": true
 		}
 	]
